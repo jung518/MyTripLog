@@ -1,6 +1,17 @@
 {
-  // VS Code는 "tsconfig.json"이라는 이름의 파일만 자동으로 찾기 때문에,
-  // api 폴더(Vercel 서버 함수)가 Node 타입을 쓰는 tsconfig.node.json 설정을 따르도록 연결합니다.
-  "extends": "../tsconfig.node.json",
+  // api 폴더(Vercel 서버 함수) 전용 설정.
+  // - VS Code는 "tsconfig.json"이라는 이름만 자동으로 찾기 때문에 이 폴더에 따로 둡니다.
+  // - Vercel 함수 빌더도 이 파일을 읽습니다. Node 타입(@types/node)을 찾지 않도록 types를 비워 둡니다.
+  //   함수는 표준 웹 API(Request, Response, fetch)만 쓰므로 DOM 타입이면 충분합니다.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
   "include": ["."]
 }
