@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { IconButton } from "./Button";
 
 interface Props {
   show: boolean;
@@ -23,9 +24,11 @@ export function Modal({ show, title, onClose, width, style, footer, children }: 
         <div className="modal-h">
           <h2>{title}</h2>
           {onClose && (
-            <button className="btn ghost" onClick={onClose}>
-              ✕
-            </button>
+            <IconButton label="닫기" className="modal-close" onClick={onClose}>
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </IconButton>
           )}
         </div>
         {children}

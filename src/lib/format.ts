@@ -1,4 +1,3 @@
-import { RATE_HINT } from "./data";
 import type { Trip, TripDraft } from "../types";
 
 type TripLike = Trip | TripDraft;
@@ -14,7 +13,6 @@ export function wonShort(n: number): string {
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-export const stars = (n: number) => (n ? "★".repeat(n) + "☆".repeat(5 - n) : "");
 
 export function daysBetween(a?: string, b?: string): number {
   if (!a || !b) return 0;
@@ -39,23 +37,19 @@ export function fmtDate(d?: string): string {
 
 export const tripYear = (t: TripLike) => (t.start ? t.start.slice(0, 4) : "");
 
-export function toKRW(t: TripLike, amount: number | string | undefined, cur?: string): number {
-  const a = Number(amount) || 0;
-  if (!cur || cur === "KRW") return a;
-  if (cur === t.currency) return a * (Number(t.rate) || RATE_HINT[cur] || 0);
-  return a * (RATE_HINT[cur] || 0);
-}
+/** 금액 칸 값을 숫자로 (빈 칸은 0). 모든 금액은 원(₩) */
+export const amt = (v: number | string | undefined): number => Number(v) || 0;
 
 export function tripCost(t: TripLike): { total: number; byCat: Record<string, number> } {
   let total = 0;
   const byCat: Record<string, number> = {};
   (t.hotels || []).forEach((h) => {
-    const v = toKRW(t, h.price, h.currency);
+    const v = amt(h.price);
     total += v;
     byCat["숙박"] = (byCat["숙박"] || 0) + v;
   });
   (t.expenses || []).forEach((e) => {
-    const v = toKRW(t, e.amount, e.currency);
+    const v = amt(e.amount);
     total += v;
     const c = e.category || "기타";
     byCat[c] = (byCat[c] || 0) + v;
@@ -70,27 +64,23 @@ export function tripCountries(t: TripLike): string[] {
 export const byStartDesc = (a: TripLike, b: TripLike) => (b.start || "").localeCompare(a.start || "");
 export const byStartAsc = (a: TripLike, b: TripLike) => (a.start || "").localeCompare(b.start || "");
 
-export function blobToDataURL(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(blob);
-  });
+/* ---------- 여권 디자인 장식용 ---------- */
+
+/** 도장에 찍을 짧은 날짜 (예: 25.03.14). 날짜가 없으면 --.--.-- */
+export function stampDate(d?: string): string {
+  if (!d) return "--.--.--";
+  const [y, m, dd] = d.split("-");
+  return `${y.slice(2)}.${m}.${dd}`;
 }
 
-/** 사진을 최대 1800px JPEG로 줄임 (실패하면 원본) */
-export async function shrinkImage(file: File): Promise<Blob> {
-  try {
-    const bmp = await createImageBitmap(file);
-    const max = 1800;
-    const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
-    const cv = document.createElement("canvas");
-    cv.width = Math.round(bmp.width * s);
-    cv.height = Math.round(bmp.height * s);
-    cv.getContext("2d")!.drawImage(bmp, 0, 0, cv.width, cv.height);
-    return await new Promise<Blob>((r) => cv.toBlob((b) => r(b || file), "image/jpeg", 0.85));
-  } catch {
-    return file;
-  }
+/**
+ * 여권 아래쪽 판독줄(MRZ)처럼 보이는 장식 문자열.
+ * 예: P<392<<250314<<04D<<<<<<<<<<<<<<<<<<<<<<<<
+ * 첫 나라 코드, 출발일(YYMMDD), 여행 일수로 만듦. 실제 의미는 없는 장식.
+ */
+export function mrzLine(t: TripLike): string {
+  const ctry = tripCountries(t)[0] || "000";
+  const start = t.start ? t.start.replace(/-/g, "").slice(2) : "<<<<<<";
+  const days = String(tripDays(t) || 0).padStart(2, "0");
+  return `P<${ctry}<<${start}<<${days}D`.padEnd(44, "<");
 }

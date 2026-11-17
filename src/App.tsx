@@ -5,8 +5,9 @@ import { MapView, type MapHandle } from "./components/MapView";
 import { SidePanel } from "./components/SidePanel";
 import { StatsView } from "./components/StatsView";
 import { TripDetail } from "./components/TripDetail";
-import { CityDatalist, TripEditor, type EditorRequest } from "./components/TripEditor";
+import { TripEditor, type EditorRequest } from "./components/TripEditor";
 import { TripsView } from "./components/TripsView";
+import { Button, LoadingScreen } from "./components/ui";
 import { WishModal } from "./components/WishModal";
 import { tripYear } from "./lib/format";
 import { loadCountries, type CountryFeature } from "./lib/geo";
@@ -46,12 +47,26 @@ interface PickState {
 let started = false;
 
 export function App() {
-  const { trips, wishes, user, needsAuth } = useStore();
+  const { trips, wishes, user, needsAuth, loading } = useStore();
   const ui = useUi();
   const view = useHashView();
   const mapRef = useRef<MapHandle>(null);
+  const headerRef = useRef<HTMLElement>(null);
+
+  // 지도 화면이 헤더 아래를 꽉 채우도록 헤더 실제 높이를 CSS 변수(--header-h)로 알려줌
+  // (글자 크기나 화면 폭 때문에 헤더 높이가 바뀌어도 맞춰짐)
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const sync = () => document.documentElement.style.setProperty("--header-h", el.offsetHeight + "px");
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const [features, setFeatures] = useState<CountryFeature[]>([]);
+  const [mapReady, setMapReady] = useState(false);
   const [year, setYear] = useState("");
   const [tripCountry, setTripCountry] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -62,7 +77,6 @@ export function App() {
   });
   const [wish, setWish] = useState({ open: false, session: 0 });
   const [backupOpen, setBackupOpen] = useState(false);
-  const [lightbox, setLightbox] = useState<string | null>(null);
   const [pick, setPick] = useState<PickState | null>(null);
 
   /* ---------- 시작: 지도 데이터 + 저장소 ---------- */
@@ -71,7 +85,8 @@ export function App() {
     started = true;
     loadCountries()
       .then(setFeatures)
-      .catch(() => showBanner("지도 데이터를 불러오지 못했어요."));
+      .catch(() => showBanner("지도 데이터를 불러오지 못했어요."))
+      .finally(() => setMapReady(true));
     void store.init().then(() => {
       if (store.mode === "local")
         showBanner(
@@ -139,7 +154,6 @@ export function App() {
       setDetailId(null);
       setWish((x) => ({ ...x, open: false }));
       setBackupOpen(false);
-      setLightbox(null);
       mapRef.current?.hidePopup();
     };
     document.addEventListener("keydown", onKey);
@@ -155,9 +169,10 @@ export function App() {
 
   return (
     <>
-      <header>
+      <header ref={headerRef}>
         <h1>
-          My <span>Trip</span> Log
+          {/* 로고: public/data/logo.png 원본에서 여백을 자르고 줄인 파일 */}
+          <img className="logo-img" src="/logo-mark.png" alt="My Trip Log" width={56} height={56} />
         </h1>
         <nav>
           {tab("map", "지도")}
@@ -166,20 +181,21 @@ export function App() {
         </nav>
         <div className="spacer" />
         {store.mode === "cloud" && user && (
-          <button
-            className="btn ghost"
+          <Button
+            variant="ghost"
             title="이 기기에서 잠그기 (다음에 비밀번호 다시 입력)"
+            aria-label="잠그기"
             onClick={() => void store.signOut()}
           >
-            🔒 잠그기
-          </button>
+            🔒<span className="hide-sm"> 잠그기</span>
+          </Button>
         )}
-        <button className="btn" onClick={() => setBackupOpen(true)}>
-          백업 / 복원
-        </button>
-        <button className="btn primary" onClick={() => openEditor({ trip: null })}>
+        <Button onClick={() => setBackupOpen(true)}>
+          백업<span className="hide-sm"> / 복원</span>
+        </Button>
+        <Button variant="primary" onClick={() => openEditor({ trip: null })}>
           + 여행 추가
-        </button>
+        </Button>
       </header>
       <div className={"banner" + (ui.banner ? " show" : "")}>{ui.banner}</div>
 
@@ -199,7 +215,7 @@ export function App() {
             onPickCancel={() => setPick(null)}
             onAddWish={() => setWish((w) => ({ open: true, session: w.session + 1 }))}
             onOpenTrip={openDetail}
-            onNewTripIn={(cid) => openEditor({ trip: null, presetCountry: cid })}
+            onNewTripIn={() => openEditor({ trip: null })}
             onWishDone={(w) =>
               openEditor({
                 trip: null,
@@ -228,6 +244,7 @@ export function App() {
             country={tripCountry}
             onCountryChange={setTripCountry}
             onOpenTrip={openDetail}
+            onAddTrip={() => openEditor({ trip: null })}
           />
         </section>
 
@@ -252,7 +269,6 @@ export function App() {
           openEditor({ trip: t });
         }}
         onShowOnMap={showOnMap}
-        onPhoto={setLightbox}
       />
       <WishModal
         key={"w" + wish.session}
@@ -263,11 +279,10 @@ export function App() {
       <BackupModal show={backupOpen} onClose={() => setBackupOpen(false)} />
       <AuthModal show={store.mode === "cloud" && needsAuth} />
 
-      <div className={"lightbox" + (lightbox ? " show" : "")} onClick={() => setLightbox(null)}>
-        {lightbox && <img src={lightbox} alt="" />}
+      <LoadingScreen show={loading || !mapReady} />
+      <div className={"toast" + (ui.toastOn ? " show" : "")} role="status" aria-live="polite">
+        {ui.toast}
       </div>
-      <div className={"toast" + (ui.toastOn ? " show" : "")}>{ui.toast}</div>
-      <CityDatalist />
     </>
   );
 }

@@ -1,0 +1,6 @@
+{
+  // VS Code는 "tsconfig.json"이라는 이름의 파일만 자동으로 찾기 때문에,
+  // api 폴더(Vercel 서버 함수)가 Node 타입을 쓰는 tsconfig.node.json 설정을 따르도록 연결합니다.
+  "extends": "../tsconfig.node.json",
+  "include": ["."]
+}

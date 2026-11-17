@@ -8,6 +8,7 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type
 import { byStartDesc, fmtDate, tripCost, tripCountries, tripLen, wonShort } from "../lib/format";
 import { cname, type CountryFeature } from "../lib/geo";
 import type { Trip, Wish } from "../types";
+import { Button, Select } from "./ui";
 
 export type ZoomKind = "mine" | "asia" | "world";
 type LngLat = [number, number];
@@ -108,7 +109,7 @@ export function MapView(props: Props) {
       .attr("stroke-width", 2.4 / k);
     c.gPins
       .selectAll("text")
-      .style("font-size", 11 / k + "px")
+      .style("font-size", 12.5 / k + "px")
       .attr("x", 9 / k)
       .attr("y", 4 / k)
       .style("stroke-width", 3 / k)
@@ -329,24 +330,24 @@ export function MapView(props: Props) {
     <div className="map-wrap" ref={wrapRef}>
       <svg id="map" ref={svgRef} className={pickText !== null ? "picking" : undefined} />
       <div className="map-tools">
-        <button className="btn small" onClick={() => zoomTo("mine")}>
+        <Button size="sm" onClick={() => zoomTo("mine")}>
           내 여행
-        </button>
-        <button className="btn small" onClick={() => zoomTo("asia")}>
+        </Button>
+        <Button size="sm" onClick={() => zoomTo("asia")}>
           아시아
-        </button>
-        <button className="btn small" onClick={() => zoomTo("world")}>
+        </Button>
+        <Button size="sm" onClick={() => zoomTo("world")}>
           세계
-        </button>
-        <select value={year} onChange={(e) => onYearChange(e.target.value)}>
-          <option value="">전체 연도</option>
-          {years.map((y) => (
-            <option key={y}>{y}</option>
-          ))}
-        </select>
-        <button className="btn small" onClick={props.onAddWish}>
+        </Button>
+        <Select
+          value={year}
+          options={[{ value: "", label: "전체 연도" }, ...years.map((y) => ({ value: y, label: y }))]}
+          onChange={onYearChange}
+          ariaLabel="연도"
+        />
+        <Button size="sm" onClick={props.onAddWish}>
           ☆ 가고 싶은 곳
-        </button>
+        </Button>
       </div>
       <div className={"pick-banner" + (pickText !== null ? " show" : "")}>
         <span>{pickText || "지도에서 위치를 클릭하세요"}</span>
@@ -437,24 +438,25 @@ function PopupBody({
         <div className="note">{cname(w.cid)}</div>
         {w.memo && <p style={{ margin: "6px 0" }}>{w.memo}</p>}
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <button
-            className="btn small"
+          <Button
+            size="sm"
             onClick={() => {
               close();
               onWishDone(w);
             }}
           >
             다녀왔어요 → 여행 추가
-          </button>
-          <button
-            className="btn small danger"
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
             onClick={() => {
               close();
               onWishDelete(w.id);
             }}
           >
             삭제
-          </button>
+          </Button>
         </div>
       </>
     );
@@ -466,16 +468,16 @@ function PopupBody({
       <>
         <h3>{cname(id)}</h3>
         <div className="note">아직 기록이 없어요</div>
-        <button
-          className="btn small"
+        <Button
+          size="sm"
           style={{ marginTop: 8 }}
           onClick={() => {
             close();
             onNewTripIn(id);
           }}
         >
-          이 나라 여행 추가
-        </button>
+          여행 추가
+        </Button>
       </>
     );
   return (

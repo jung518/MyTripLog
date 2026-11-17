@@ -1,10 +1,9 @@
 import { CAT_COLORS } from "../lib/data";
 import {
+  amt,
   byStartDesc,
   daysBetween,
   fmtDate,
-  stars,
-  toKRW,
   tripCost,
   tripCountries,
   tripDays,
@@ -15,6 +14,7 @@ import {
 import { cname } from "../lib/geo";
 import type { Trip } from "../types";
 import { Bars, type BarRow } from "./Bars";
+import { EmptyState, Kpi, KpiGrid, Panel, TableScroll } from "./ui";
 
 interface Props {
   trips: Trip[];
@@ -47,10 +47,9 @@ export function StatsView({ trips: ts, onOpenTrip }: Props) {
       ...h,
       trip: t,
       nights: Math.max(1, daysBetween(h.checkIn, h.checkOut)),
-      krw: toKRW(t, h.price, h.currency),
+      krw: amt(h.price),
     })),
   );
-  const nights = hotels.reduce((s, h) => s + (h.checkIn && h.checkOut ? h.nights : 0), 0);
   const abroad = [...countries].filter((c) => c !== "410").length;
   const kpis: [string | number, string][] = [
     [abroad, "다녀온 나라"],
@@ -58,101 +57,76 @@ export function StatsView({ trips: ts, onOpenTrip }: Props) {
     [ts.length, "여행 횟수"],
     [days + "일", "여행한 날"],
     [wonShort(total), "총 경비"],
-    [days ? wonShort(total / days) : "-", "하루 평균"],
     [ts.length ? wonShort(total / ts.length) : "-", "여행당 평균"],
-    [nights + "박", "호텔 숙박"],
   ];
-  const perDay: BarRow[] = ts
-    .filter((t) => tripDays(t))
-    .map((t): BarRow => [t.title || "제목 없음", tripCost(t).total / tripDays(t)])
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-  const hs = [...hotels].sort(
-    (a, b) => (b.rating || 0) - (a.rating || 0) || (b.trip.start || "").localeCompare(a.trip.start || ""),
-  );
+  const hs = [...hotels].sort((a, b) => (b.trip.start || "").localeCompare(a.trip.start || ""));
   const tl = [...ts].sort(byStartDesc);
 
   return (
     <div className="page">
-      <div className="stat-grid">
+      <KpiGrid>
         {kpis.map(([b, s]) => (
-          <div className="kpi" key={s}>
-            <b>{b}</b>
-            <span>{s}</span>
-          </div>
+          <Kpi key={s} value={b} label={s} />
         ))}
-      </div>
+      </KpiGrid>
       <div className="two">
-        <div className="panel">
-          <h2>연도별 경비</h2>
+        <Panel title="연도별 경비">
           <Bars rows={Object.entries(byYear).sort((a, b) => a[0].localeCompare(b[0]))} />
-        </div>
-        <div className="panel">
-          <h2>항목별 경비</h2>
+        </Panel>
+        <Panel title="항목별 경비">
           <Bars rows={Object.entries(byCat).sort((a, b) => b[1] - a[1])} colorOf={(k) => CAT_COLORS[k] || "#9c968a"} />
-        </div>
+        </Panel>
       </div>
+      <Panel title="나라별 방문">
+        <Bars
+          rows={Object.entries(byC)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, v]): BarRow => [cname(k), v])}
+          fmt={(v) => v + "번"}
+          colorOf={() => "var(--pin)"}
+        />
+      </Panel>
       <div className="two">
-        <div className="panel">
-          <h2>나라별 방문</h2>
-          <Bars
-            rows={Object.entries(byC)
-              .sort((a, b) => b[1] - a[1])
-              .map(([k, v]): BarRow => [cname(k), v])}
-            fmt={(v) => v + "번"}
-            colorOf={() => "var(--pin)"}
-          />
-        </div>
-        <div className="panel">
-          <h2>하루 평균 경비 (여행별)</h2>
-          <Bars rows={perDay} />
-        </div>
-      </div>
-      <div className="two">
-        <div className="panel">
-          <h2>호텔 기록</h2>
+        <Panel title="호텔 기록">
           {hs.length ? (
-            <table>
-              <tbody>
-                <tr>
-                  <th>호텔</th>
-                  <th>도시</th>
-                  <th className="num">박</th>
-                  <th className="num">1박 평균</th>
-                  <th>별점</th>
-                </tr>
-                {hs.slice(0, 15).map((h, i) => (
-                  <tr key={i}>
-                    <td>{h.name}</td>
-                    <td>{h.city || ""}</td>
-                    <td className="num">{h.checkIn && h.checkOut ? h.nights : "-"}</td>
-                    <td className="num">{h.krw ? wonShort(h.krw / h.nights) : "-"}</td>
-                    <td className="stars">{stars(+h.rating || 0)}</td>
+            <TableScroll>
+              <table>
+                <tbody>
+                  <tr>
+                    <th>호텔</th>
+                    <th className="num">박</th>
+                    <th className="num">1박 평균</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                  {hs.slice(0, 15).map((h, i) => (
+                    <tr key={i}>
+                      <td>{h.name}</td>
+                      <td className="num">{h.checkIn && h.checkOut ? h.nights : "-"}</td>
+                      <td className="num">{h.krw ? wonShort(h.krw / h.nights) : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
           ) : (
-            <div className="empty">숙소 기록이 없어요</div>
+            <EmptyState compact title="숙소 기록이 없어요" />
           )}
-        </div>
-        <div className="panel">
-          <h2>여행 타임라인</h2>
+        </Panel>
+        <Panel title="여행 타임라인">
           <div className="timeline">
             {tl.length ? (
               tl.map((t) => (
-                <div className="tl-item" key={t.id} onClick={() => onOpenTrip(t.id)}>
-                  <div className="y">
+                <button type="button" className="tl-item" key={t.id} onClick={() => onOpenTrip(t.id)}>
+                  <span className="y">
                     {fmtDate(t.start)} · {tripLen(t)}
-                  </div>
+                  </span>
                   <b>{t.title || "제목 없음"}</b> <span className="note">{tripCountries(t).map(cname).join(", ")}</span>
-                </div>
+                </button>
               ))
             ) : (
-              <div className="empty">아직 기록이 없어요</div>
+              <EmptyState compact title="아직 기록이 없어요" />
             )}
           </div>
-        </div>
+        </Panel>
       </div>
     </div>
   );

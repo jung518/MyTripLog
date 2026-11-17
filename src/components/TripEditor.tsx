@@ -1,17 +1,27 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { CATS, CITIES, CUR_BY_COUNTRY, CURRENCIES, KO, RATE_HINT } from "../lib/data";
-import { shrinkImage, tripCost, won, wonShort } from "../lib/format";
+import { useEffect, useRef, useState } from "react";
+import { CATS, KO } from "../lib/data";
+import { tripCost, won, wonShort } from "../lib/format";
 import { cname, countryFor } from "../lib/geo";
+import { LIMITS } from "../lib/limits";
 import { toast } from "../lib/ui";
 import { store } from "../store";
 import type { City, Expense, Hotel, Trip, TripDraft } from "../types";
 import { CitySearch } from "./CitySearch";
-import { Modal } from "./Modal";
+import {
+  Button,
+  DateRangePicker,
+  Field,
+  FieldRow,
+  IconButton,
+  Modal,
+  NumberInput,
+  Select,
+  TextArea,
+  TextInput,
+} from "./ui";
 
 export interface EditorRequest {
   trip: Trip | null;
-  /** "이 나라 여행 추가"로 열었을 때 그 나라 통화로 맞춤 */
-  presetCountry?: string;
   /** 처음부터 넣어 둘 도시 (가고 싶은 곳 → 다녀왔어요) */
   initialCity?: City;
   /** 저장하면 지울 가고 싶은 곳 id */
@@ -32,45 +42,49 @@ function blankTrip(): TripDraft {
     start: "",
     end: "",
     with: "",
-    rating: 0,
-    tags: [],
     memo: "",
     cities: [],
     hotels: [],
     expenses: [],
-    photos: [],
-    currency: "KRW",
-    rate: 1,
   };
 }
 
-const withCurrency = (d: TripDraft, c: string): TripDraft => ({ ...d, currency: c, rate: RATE_HINT[c] || 1 });
+const addCityTo = (d: TripDraft, c: City): TripDraft => ({ ...d, cities: [...d.cities, c] });
 
-function addCityTo(d: TripDraft, c: City): TripDraft {
-  let n: TripDraft = { ...d, cities: [...d.cities, c] };
-  const cur = c.cid ? CUR_BY_COUNTRY[c.cid] : undefined;
-  if (n.currency === "KRW" && cur && cur !== "KRW") n = withCurrency(n, cur);
-  return n;
-}
+/** 예전 기록에 남아 있을 수 있는 필드(사진, 통화·환율, 별점, 태그)를 버림. 다시 저장하면 깨끗해짐 */
+const LEGACY_TRIP = ["photos", "cover", "currency", "rate", "rating", "tags"];
+const omit = <T extends object>(o: T, keys: string[]): T =>
+  Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k))) as T;
 
 function initDraft(req: EditorRequest): TripDraft {
-  let d: TripDraft = req.trip ? { ...blankTrip(), ...structuredClone(req.trip) } : blankTrip();
-  if (req.presetCountry && CUR_BY_COUNTRY[req.presetCountry]) d = withCurrency(d, CUR_BY_COUNTRY[req.presetCountry]);
+  let d: TripDraft = blankTrip();
+  if (req.trip) {
+    const t = omit(structuredClone(req.trip), LEGACY_TRIP);
+    d = {
+      ...d,
+      ...t,
+      // 숙소 도시·경비 날짜는 더 이상 쓰지 않음 (도시는 위 방문 도시로 충분)
+      hotels: (t.hotels || []).map((h) => omit(h, ["currency", "rating", "city"])),
+      expenses: (t.expenses || []).map((e) => omit(e, ["currency", "date"])),
+    };
+  }
   if (req.initialCity) d = addCityTo(d, req.initialCity);
   return d;
 }
 
-const numOrBlank = (v: string): number | "" => (v === "" ? "" : +v);
-const numOrNull = (v: string): number | null => (v === "" ? null : +v);
-
 const COUNTRY_IDS = Object.keys(KO);
+const CAT_OPTS = CATS.map((c) => ({ value: c, label: c }));
+
+const X = (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
 
 /** 이 컴포넌트는 열 때마다 key를 바꿔 새로 만들어집니다 (초안 초기화). */
 export function TripEditor({ request, show, onClose, onStartPick }: Props) {
   const [draft, setDraft] = useState<TripDraft>(() => initDraft(request));
-  const [tagsText, setTagsText] = useState(() => (draft.tags || []).join(", "));
   const [cityQ, setCityQ] = useState("");
-  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const expRowsRef = useRef<HTMLDivElement>(null);
   const focusNewExp = useRef(false);
@@ -87,16 +101,6 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
   const delRow = (arr: "cities" | "hotels" | "expenses", i: number) =>
     setDraft((d) => ({ ...d, [arr]: d[arr].filter((_, j) => j !== i) }));
 
-  function changeCurrency(c: string) {
-    setDraft((d) => {
-      const prev = d.currency;
-      // 기존 현지통화 항목도 새 통화로 맞춤
-      const conv = <T extends { currency: string }>(x: T): T =>
-        x.currency === prev && prev !== "KRW" ? { ...x, currency: c } : x;
-      return { ...withCurrency(d, c), hotels: d.hotels.map(conv), expenses: d.expenses.map(conv) };
-    });
-  }
-
   const addCity = (c: City) => setDraft((d) => addCityTo(d, c));
 
   function pickCity() {
@@ -111,12 +115,9 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
     setDraft((d) => {
       const h: Hotel = {
         name: "",
-        city: d.cities.length ? d.cities[d.cities.length - 1].name : "",
         checkIn: d.start,
         checkOut: d.end,
         price: "",
-        currency: d.currency,
-        rating: 0,
         memo: "",
       };
       return { ...d, hotels: [...d.hotels, h] };
@@ -127,11 +128,9 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
     setDraft((d) => {
       const last = d.expenses[d.expenses.length - 1];
       const e: Expense = {
-        date: last?.date || d.start,
         category: last ? "식비" : "항공",
         desc: "",
         amount: "",
-        currency: last ? last.currency : "KRW",
       };
       return { ...d, expenses: [...d.expenses, e] };
     });
@@ -145,43 +144,17 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
     ins?.[ins.length - 1]?.focus();
   }, [draft.expenses.length]);
 
-  async function onPhotos(e: ChangeEvent<HTMLInputElement>) {
-    const files = [...(e.target.files || [])];
-    e.target.value = "";
-    if (!files.length) return;
-    setUploading(true);
-    let n = 0;
-    for (const f of files) {
-      toast(`사진 올리는 중… (${++n}/${files.length})`);
-      try {
-        const id = await store.addPhoto(await shrinkImage(f));
-        setDraft((d) => ({ ...d, photos: [...d.photos, { id }] }));
-      } catch {
-        toast("사진을 올리지 못했어요");
-      }
-    }
-    setUploading(false);
-    toast("사진을 추가했어요");
-  }
-
-  function removePhoto(i: number) {
-    setDraft((d) => {
-      const p = d.photos[i];
-      return { ...d, photos: d.photos.filter((_, j) => j !== i), cover: d.cover === p.id ? "" : d.cover };
-    });
-  }
-
   async function save() {
     const d: TripDraft = {
       ...draft,
       title: draft.title.trim(),
       with: draft.with.trim(),
-      tags: tagsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
     };
-    if (!d.title) d.title = d.cities.length ? d.cities.map((c) => c.name).slice(0, 3).join("·") + " 여행" : "";
+    // 제목이 비어 있으면 도시 이름으로 자동 제목 (글자 수 한도 안에서)
+    if (!d.title)
+      d.title = d.cities.length
+        ? (d.cities.map((c) => c.name).slice(0, 3).join("·") + " 여행").slice(0, LIMITS.tripTitle)
+        : "";
     if (!d.title && !d.cities.length) {
       toast("제목이나 도시를 하나 이상 입력해 주세요");
       return;
@@ -203,7 +176,6 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
           /* 무시 */
         }
       }
-      await store.cleanupPhotos();
       onClose();
       toast("저장했어요 ✈️");
     } catch {
@@ -213,10 +185,15 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
     }
   }
 
-  const curOpts = [...new Set(["KRW", draft.currency, ...CURRENCIES])];
-  const countryIds = (sel: string) =>
-    [...new Set([...COUNTRY_IDS, ...(sel ? [sel] : [])])].sort((a, b) => cname(a).localeCompare(cname(b), "ko"));
+  const countryOpts = (sel: string) => [
+    { value: "", label: "-" },
+    ...[...new Set([...COUNTRY_IDS, ...(sel ? [sel] : [])])]
+      .sort((a, b) => cname(a).localeCompare(cname(b), "ko"))
+      .map((id) => ({ value: id, label: cname(id) })),
+  ];
   const cost = tripCost(draft);
+  // 숙소·경비 날짜를 고를 때 달력에 여행 기간을 은은하게 표시
+  const tripRange = { start: draft.start, end: draft.end };
 
   return (
     <Modal
@@ -225,65 +202,55 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
       onClose={onClose}
       footer={
         <>
-          <button className="btn" onClick={onClose}>
+          <Button onClick={onClose} disabled={saving}>
             취소
-          </button>
-          <button className="btn primary" onClick={save} disabled={uploading || saving}>
-            저장
-          </button>
+          </Button>
+          <Button variant="primary" onClick={save} loading={saving}>
+            {saving ? "저장 중…" : "저장"}
+          </Button>
         </>
       }
     >
       <div className="modal-b">
         <fieldset>
           <legend>기본 정보</legend>
-          <div className="frow">
-            <label className="f" style={{ gridColumn: "span 2" }}>
-              여행 제목
-              <input
+          <FieldRow>
+            <Field label="여행 제목" span={2}>
+              <TextInput
                 value={draft.title}
                 onChange={(e) => set("title", e.target.value)}
                 placeholder="예: 첫 오사카 미식 여행"
+                maxLength={LIMITS.tripTitle}
+                onClear={() => set("title", "")}
               />
-            </label>
-            <label className="f">
-              출발일
-              <input type="date" value={draft.start} onChange={(e) => set("start", e.target.value)} />
-            </label>
-            <label className="f">
-              귀국일
-              <input type="date" value={draft.end} onChange={(e) => set("end", e.target.value)} />
-            </label>
-          </div>
-          <div className="frow">
-            <label className="f">
-              동행
-              <input value={draft.with} onChange={(e) => set("with", e.target.value)} placeholder="혼자, 친구, 가족…" />
-            </label>
-            <label className="f">
-              만족도
-              <select value={draft.rating || 0} onChange={(e) => set("rating", +e.target.value)}>
-                <option value="0">-</option>
-                {[5, 4, 3, 2, 1].map((n) => (
-                  <option key={n} value={n}>
-                    {"★".repeat(n)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="f" style={{ gridColumn: "span 2" }}>
-              태그 (쉼표로 구분)
-              <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="미식, 온천, 휴양" />
-            </label>
-          </div>
-          <label className="f">
-            메모 / 여행 일기
-            <textarea
+            </Field>
+            <Field label="여행 기간" span={2}>
+              <DateRangePicker
+                start={draft.start}
+                end={draft.end}
+                onChange={(start, end) => setDraft((d) => ({ ...d, start, end }))}
+                placeholder="출발일 – 귀국일"
+                ariaLabel="여행 기간"
+              />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="동행">
+              <TextInput value={draft.with} onChange={(e) => set("with", e.target.value)} placeholder="혼자, 친구, 가족…"
+                maxLength={LIMITS.tripWith}
+              />
+            </Field>
+          </FieldRow>
+          <Field label="메모 / 여행 일기">
+            <TextArea
               value={draft.memo}
               onChange={(e) => set("memo", e.target.value)}
               placeholder="기억하고 싶은 순간, 맛집, 다음에 다시 가면 할 것…"
+              rows={5}
+              maxLength={LIMITS.tripMemo}
+              diary
             />
-          </label>
+          </Field>
         </fieldset>
 
         <fieldset>
@@ -299,45 +266,43 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
             {draft.cities.length ? (
               draft.cities.map((c, i) => (
                 <div className="row city" key={i}>
-                  <input value={c.name} onChange={(e) => setRow("cities", i, { name: e.target.value })} />
-                  <select value={c.cid || ""} onChange={(e) => setRow("cities", i, { cid: e.target.value })}>
-                    <option value="">-</option>
-                    {countryIds(c.cid).map((id) => (
-                      <option key={id} value={id}>
-                        {cname(id)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    step="any"
-                    value={c.lat ?? ""}
-                    onChange={(e) => setRow("cities", i, { lat: numOrNull(e.target.value) })}
+                  <TextInput
+                    aria-label="도시 이름"
+                    maxLength={LIMITS.cityName}
+                    value={c.name}
+                    onChange={(e) => setRow("cities", i, { name: e.target.value })}
                   />
-                  <input
-                    type="number"
-                    step="any"
-                    value={c.lng ?? ""}
-                    onChange={(e) => setRow("cities", i, { lng: numOrNull(e.target.value) })}
+                  <Select
+                    value={c.cid || ""}
+                    options={countryOpts(c.cid)}
+                    onChange={(v) => setRow("cities", i, { cid: v })}
+                    ariaLabel="나라"
                   />
-                  <button className="x" title="삭제" onClick={() => delRow("cities", i)}>
-                    ×
-                  </button>
+                  <NumberInput
+                    aria-label="위도"
+                    placeholder="위도"
+                    value={c.lat}
+                    onValue={(v) => setRow("cities", i, { lat: v === "" ? null : v })}
+                  />
+                  <NumberInput
+                    aria-label="경도"
+                    placeholder="경도"
+                    value={c.lng}
+                    onValue={(v) => setRow("cities", i, { lng: v === "" ? null : v })}
+                  />
+                  <IconButton label="도시 삭제" className="x" onClick={() => delRow("cities", i)}>
+                    {X}
+                  </IconButton>
                 </div>
               ))
             ) : (
               <div className="note">아직 도시가 없어요.</div>
             )}
           </div>
-          <CitySearch
-            value={cityQ}
-            onChange={setCityQ}
-            onPick={addCity}
-            placeholder="도시 검색 (예: 타이베이, 방콕, 다낭)"
-          >
-            <button className="btn small" onClick={pickCity}>
+          <CitySearch value={cityQ} onChange={setCityQ} onPick={addCity} placeholder="도시 검색 (예: 타이베이, 방콕, 다낭)">
+            <Button size="sm" onClick={pickCity}>
               📍 지도에서 찍기
-            </button>
+            </Button>
           </CitySearch>
           <div className="note" style={{ marginTop: 6 }}>
             목록에 없는 도시는 이름을 입력하고 ‘지도에서 찍기’로 위치를 정하세요.
@@ -345,154 +310,102 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
         </fieldset>
 
         <fieldset>
-          <legend>통화 · 환율</legend>
-          <div className="frow">
-            <label className="f">
-              현지 통화
-              <select value={draft.currency} onChange={(e) => changeCurrency(e.target.value)}>
-                {CURRENCIES.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-            <label className="f">
-              환율 (1 현지통화 = ? 원)
-              <input
-                type="number"
-                step="any"
-                value={draft.rate ?? 1}
-                onChange={(e) => set("rate", +e.target.value || 0)}
-              />
-            </label>
-            <div className="note" style={{ alignSelf: "end" }}>
-              기본값은 대략적인 값이에요. 실제 환전한 환율로 바꿔 두면 원화 합계가 정확해져요.
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset>
           <legend>숙소</legend>
           <div className="rowhead hotel">
             <span>호텔 이름</span>
-            <span>도시</span>
-            <span>체크인</span>
-            <span>체크아웃</span>
+            <span>숙박 기간</span>
             <span>총 금액</span>
-            <span>통화</span>
-            <span>별점</span>
             <span />
           </div>
           <div className="rows">
             {draft.hotels.map((h, i) => (
               <div className="row hotel" key={i}>
-                <input
+                <TextInput
+                  aria-label="호텔 이름"
+                  maxLength={LIMITS.hotelName}
                   placeholder="호텔 이름"
                   value={h.name}
                   onChange={(e) => setRow("hotels", i, { name: e.target.value })}
                 />
-                <input
-                  placeholder="도시"
-                  list="cityList"
-                  value={h.city || ""}
-                  onChange={(e) => setRow("hotels", i, { city: e.target.value })}
+                <DateRangePicker
+                  start={h.checkIn || ""}
+                  end={h.checkOut || ""}
+                  onChange={(checkIn, checkOut) => setRow("hotels", i, { checkIn, checkOut })}
+                  placeholder="체크인 – 체크아웃"
+                  labels={["체크인", "체크아웃"]}
+                  sameDayLabel="대실"
+                  defaultMonth={draft.start}
+                  highlight={tripRange}
+                  ariaLabel="숙박 기간"
                 />
-                <input
-                  type="date"
-                  value={h.checkIn || ""}
-                  onChange={(e) => setRow("hotels", i, { checkIn: e.target.value })}
-                />
-                <input
-                  type="date"
-                  value={h.checkOut || ""}
-                  onChange={(e) => setRow("hotels", i, { checkOut: e.target.value })}
-                />
-                <input
-                  type="number"
-                  step="any"
+                <NumberInput
+                  aria-label="숙소 총 금액 (원)"
                   placeholder="금액"
-                  value={h.price ?? ""}
-                  onChange={(e) => setRow("hotels", i, { price: numOrBlank(e.target.value) })}
+                  suffix="원"
+                  value={h.price}
+                  onValue={(v) => setRow("hotels", i, { price: v })}
                 />
-                <select value={h.currency} onChange={(e) => setRow("hotels", i, { currency: e.target.value })}>
-                  {curOpts.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-                <select value={+h.rating || 0} onChange={(e) => setRow("hotels", i, { rating: +e.target.value })}>
-                  <option value="0">-</option>
-                  {[5, 4, 3, 2, 1].map((n) => (
-                    <option key={n} value={n}>
-                      {n}★
-                    </option>
-                  ))}
-                </select>
-                <button className="x" title="삭제" onClick={() => delRow("hotels", i)}>
-                  ×
-                </button>
-                <input
+                <IconButton label="숙소 삭제" className="x" onClick={() => delRow("hotels", i)}>
+                  {X}
+                </IconButton>
+                <TextInput
+                  aria-label="숙소 메모"
+                  maxLength={LIMITS.hotelMemo}
                   placeholder="메모 (위치, 조식, 다시 묵을지…)"
                   value={h.memo || ""}
                   onChange={(e) => setRow("hotels", i, { memo: e.target.value })}
-                  style={{ gridColumn: "1/-1" }}
+                  boxStyle={{ gridColumn: "1/-1" }}
                 />
               </div>
             ))}
           </div>
-          <button className="btn small" style={{ marginTop: 8 }} onClick={addHotel}>
+          <Button size="sm" style={{ marginTop: 8 }} onClick={addHotel}>
             + 숙소 추가
-          </button>
+          </Button>
         </fieldset>
 
         <fieldset>
           <legend>경비</legend>
           <div className="rowhead exp">
-            <span>날짜</span>
             <span>항목</span>
-            <span>내용</span>
+            <span>상세 내용</span>
             <span>금액</span>
-            <span>통화</span>
             <span />
           </div>
           <div className="rows" ref={expRowsRef}>
             {draft.expenses.map((x, i) => (
               <div className="row exp" key={i}>
-                <input
-                  type="date"
-                  value={x.date || ""}
-                  onChange={(e) => setRow("expenses", i, { date: e.target.value })}
+                <Select
+                  value={x.category}
+                  options={CAT_OPTS}
+                  onChange={(v) => setRow("expenses", i, { category: v })}
+                  ariaLabel="항목"
                 />
-                <select value={x.category} onChange={(e) => setRow("expenses", i, { category: e.target.value })}>
-                  {CATS.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-                <input
+                <TextInput
                   data-f="desc"
-                  placeholder="내용"
+                  aria-label="경비 상세 내용"
+                  maxLength={LIMITS.expenseDesc}
+                  placeholder="상세 내용"
+                  boxClassName="exp-desc"
                   value={x.desc || ""}
                   onChange={(e) => setRow("expenses", i, { desc: e.target.value })}
                 />
-                <input
-                  type="number"
-                  step="any"
+                <NumberInput
+                  aria-label="경비 금액 (원)"
                   placeholder="금액"
-                  value={x.amount ?? ""}
-                  onChange={(e) => setRow("expenses", i, { amount: numOrBlank(e.target.value) })}
+                  suffix="원"
+                  value={x.amount}
+                  onValue={(v) => setRow("expenses", i, { amount: v })}
                 />
-                <select value={x.currency} onChange={(e) => setRow("expenses", i, { currency: e.target.value })}>
-                  {curOpts.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-                <button className="x" title="삭제" onClick={() => delRow("expenses", i)}>
-                  ×
-                </button>
+                <IconButton label="경비 삭제" className="x" onClick={() => delRow("expenses", i)}>
+                  {X}
+                </IconButton>
               </div>
             ))}
           </div>
-          <button className="btn small" style={{ marginTop: 8 }} onClick={addExpense}>
+          <Button size="sm" style={{ marginTop: 8 }} onClick={addExpense}>
             + 경비 추가
-          </button>
+          </Button>
           <div className="sum">
             {cost.total > 0 && (
               <>
@@ -510,42 +423,7 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
             )}
           </div>
         </fieldset>
-
-        <fieldset>
-          <legend>사진</legend>
-          <div className="photos">
-            {draft.photos.map((p, i) => (
-              <div className="ph" key={p.id}>
-                <img src={store.photoUrl(p.id)} alt="" />
-                <button title="빼기" onClick={() => removePhoto(i)}>
-                  ×
-                </button>
-                <button className="cov" onClick={() => set("cover", p.id)}>
-                  {(draft.cover ? draft.cover === p.id : i === 0) ? "★ 대표" : "대표로"}
-                </button>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <label className="btn small" style={{ cursor: "pointer" }}>
-              + 사진 올리기
-              <input type="file" accept="image/*" multiple hidden onChange={onPhotos} />
-            </label>
-            <span className="note">첫 번째 사진(또는 ‘대표’로 고른 사진)이 카드 표지가 돼요.</span>
-          </div>
-        </fieldset>
       </div>
     </Modal>
-  );
-}
-
-/** 숙소 도시 입력칸 자동완성용 목록 */
-export function CityDatalist() {
-  return (
-    <datalist id="cityList">
-      {CITIES.map((c) => (
-        <option key={c[0] + c[3]} value={c[0]} />
-      ))}
-    </datalist>
   );
 }

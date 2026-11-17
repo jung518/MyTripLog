@@ -8,25 +8,18 @@ export interface City {
 
 export interface Hotel {
   name: string;
-  city: string;
   checkIn: string;
   checkOut: string;
+  /** 원(₩) */
   price: number | "";
-  currency: string;
-  rating: number;
   memo: string;
 }
 
 export interface Expense {
-  date: string;
   category: string;
   desc: string;
+  /** 원(₩) */
   amount: number | "";
-  currency: string;
-}
-
-export interface PhotoRef {
-  id: string;
 }
 
 export interface Trip {
@@ -35,17 +28,10 @@ export interface Trip {
   start: string;
   end: string;
   with: string;
-  rating: number;
-  tags: string[];
   memo: string;
   cities: City[];
   hotels: Hotel[];
   expenses: Expense[];
-  photos: PhotoRef[];
-  cover?: string;
-  currency: string;
-  /** 1 현지통화 = ? 원 */
-  rate: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -72,5 +58,4 @@ export interface BackupFile {
   exportedAt: string;
   trips: Trip[];
   wishes: Wish[];
-  photos: { id: string; dataUrl: string }[];
 }

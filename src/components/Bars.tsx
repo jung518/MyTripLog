@@ -1,4 +1,5 @@
 import { wonShort } from "../lib/format";
+import { EmptyState } from "./ui";
 
 export type BarRow = [label: string, value: number];
 
@@ -10,7 +11,7 @@ interface Props {
 
 /** 가로 막대 그래프 */
 export function Bars({ rows, fmt = wonShort, colorOf }: Props) {
-  if (!rows.length) return <div className="empty">데이터가 없어요</div>;
+  if (!rows.length) return <EmptyState compact title="데이터가 없어요" />;
   const max = Math.max(1, ...rows.map((r) => r[1]));
   return (
     <>

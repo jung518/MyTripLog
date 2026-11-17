@@ -2,29 +2,23 @@
  * 로컬 저장소 (IndexedDB) - src/config.ts에 Supabase 정보가 없을 때 사용
  * - trips   : 여행 기록
  * - wishes  : 가고 싶은 곳
- * - photos  : 사진 원본(Blob)  { id, blob, createdAt }
  * 데이터는 "이 브라우저"에 저장됩니다. 다른 기기로 옮길 때는 백업/복원을 쓰세요.
  * ========================================================= */
-import { blobToDataURL, uid } from "../lib/format";
+import { uid } from "../lib/format";
 import { showBanner, toast } from "../lib/ui";
 import type { BackupFile, Draft, Kind, Records, Trip, Wish } from "../types";
 import { BaseStore, type TravelStore } from "./base";
 
 const DB_NAME = "travel-map";
 const DB_VERSION = 1;
-type StoreName = "trips" | "wishes" | "photos";
-interface PhotoRow {
-  id: string;
-  blob: Blob;
-  createdAt: string;
-}
+type StoreName = "trips" | "wishes";
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      for (const name of ["trips", "wishes", "photos"]) {
+      for (const name of ["trips", "wishes"]) {
         if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: "id" });
       }
     };
@@ -51,13 +45,10 @@ export class LocalStore extends BaseStore implements TravelStore {
       navigator.storage?.persist?.().catch(() => {});
       const trips = await this.all<Trip>("trips");
       const wishes = await this.all<Wish>("wishes");
-      const photos = await this.all<PhotoRow>("photos");
-      photos.forEach((p) => {
-        this.photoUrls[p.id] = URL.createObjectURL(p.blob);
-      });
-      this.setState({ trips, wishes });
+      this.setState({ trips, wishes, loading: false });
     } catch (e) {
       console.error(e);
+      this.setState({ loading: false });
       showBanner("브라우저 저장소를 열 수 없어요. 시크릿 모드라면 일반 창에서 열어 주세요.");
     }
   }
@@ -86,47 +77,16 @@ export class LocalStore extends BaseStore implements TravelStore {
   async remove(kind: Kind, id: string) {
     await idbReq(this.tx(kind, "readwrite").delete(id));
     this.dropLocal(kind, id);
-    if (kind === "trips") await this.cleanupPhotos();
-  }
-
-  /* ---------- 사진 ---------- */
-  async addPhoto(blob: Blob): Promise<string> {
-    const id = uid();
-    await idbReq(this.tx("photos", "readwrite").put({ id, blob, createdAt: new Date().toISOString() }));
-    this.photoUrls[id] = URL.createObjectURL(blob);
-    return id;
-  }
-
-  /** 어떤 여행에도 연결되지 않은 사진 삭제 */
-  async cleanupPhotos() {
-    const used = this.usedPhotoIds();
-    const all = await this.all<PhotoRow>("photos");
-    for (const p of all) {
-      if (!used.has(p.id)) {
-        await idbReq(this.tx("photos", "readwrite").delete(p.id));
-        if (this.photoUrls[p.id]) URL.revokeObjectURL(this.photoUrls[p.id]);
-        delete this.photoUrls[p.id];
-      }
-    }
   }
 
   /* ---------- 백업 / 복원 ---------- */
-  async exportJSON(includePhotos: boolean) {
-    const out = this.backupBase();
-    if (includePhotos) {
-      const all = await this.all<PhotoRow>("photos");
-      for (const p of all) out.photos.push({ id: p.id, dataUrl: await blobToDataURL(p.blob) });
-    }
-    return JSON.stringify(out);
+  async exportJSON() {
+    return JSON.stringify(this.backupBase());
   }
 
+  /** 예전 백업 파일에 photos가 들어 있어도 무시하고 여행·가고 싶은 곳만 불러옴 */
   async importJSON(text: string) {
     const d = JSON.parse(text) as Partial<BackupFile>;
-    for (const p of d.photos || []) {
-      const blob = await (await fetch(p.dataUrl)).blob();
-      await idbReq(this.tx("photos", "readwrite").put({ id: p.id, blob, createdAt: new Date().toISOString() }));
-      this.photoUrls[p.id] = URL.createObjectURL(blob);
-    }
     for (const t of d.trips || []) await idbReq(this.tx("trips", "readwrite").put(t));
     for (const w of d.wishes || []) await idbReq(this.tx("wishes", "readwrite").put(w));
     this.setState({ trips: await this.all<Trip>("trips"), wishes: await this.all<Wish>("wishes") });

@@ -43,29 +43,9 @@ create policy "wishes: own rows" on public.wishes
 grant select, insert, update, delete on public.trips  to authenticated;
 grant select, insert, update, delete on public.wishes to authenticated;
 
--- 3) 사진 저장소 (비공개 버킷)
-insert into storage.buckets (id, name, public)
-values ('photos', 'photos', false)
-on conflict (id) do nothing;
-
--- 4) 사진 보안 규칙: photos/<내 사용자 ID>/... 폴더만 접근
+-- 3) 정리: 예전 버전(사진 기능)에서 만든 보안 규칙 삭제 (없으면 그냥 넘어감)
+--    사진 기능은 제거됐습니다. 'photos' 버킷이 남아 있다면 대시보드 → Storage 에서 직접 지우세요.
 drop policy if exists "photos: read own"   on storage.objects;
 drop policy if exists "photos: insert own" on storage.objects;
 drop policy if exists "photos: update own" on storage.objects;
 drop policy if exists "photos: delete own" on storage.objects;
-
-create policy "photos: read own" on storage.objects
-  for select to authenticated
-  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
-
-create policy "photos: insert own" on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
-
-create policy "photos: update own" on storage.objects
-  for update to authenticated
-  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
-
-create policy "photos: delete own" on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
