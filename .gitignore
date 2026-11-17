@@ -11,3 +11,5 @@ travel-map-backup-*.json
 # 기타
 node_modules/
 *.log
+dist/
+.env.local
