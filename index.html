@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>나의 여행 지도</title>
+<meta name="description" content="내가 다녀온 여행을 지도에 기록하는 개인 여행 다이어리">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+<header>
+  <h1>나의 <span>여행</span> 지도</h1>
+  <nav>
+    <a href="#map" data-v="map">지도</a>
+    <a href="#trips" data-v="trips">여행 기록</a>
+    <a href="#stats" data-v="stats">통계</a>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn ghost hidden" id="logoutBtn" title="이 기기에서 잠그기 (다음에 비밀번호 다시 입력)">🔒 잠그기</button>
+  <button class="btn" id="backupBtn">백업 / 복원</button>
+  <button class="btn primary" id="addTripBtn">+ 여행 추가</button>
+</header>
+<div class="banner" id="banner"></div>
+
+<main>
+  <!-- MAP -->
+  <section class="view" id="mapView">
+    <div class="map-wrap">
+      <svg id="map"></svg>
+      <div class="map-tools">
+        <button class="btn small" data-zoom="mine">내 여행</button>
+        <button class="btn small" data-zoom="asia">아시아</button>
+        <button class="btn small" data-zoom="world">세계</button>
+        <select id="yearFilter"><option value="">전체 연도</option></select>
+        <button class="btn small" id="addWishBtn">☆ 가고 싶은 곳</button>
+      </div>
+      <div class="pick-banner" id="pickBanner"><span id="pickText">지도에서 위치를 클릭하세요</span><button id="pickCancel">취소</button></div>
+      <div class="legend">
+        <div><i style="background:var(--v1)"></i>1번 방문</div>
+        <div><i style="background:var(--v2)"></i>2번 방문</div>
+        <div><i style="background:var(--v3)"></i>3번 이상</div>
+        <div><i class="c" style="background:var(--pin)"></i>다녀온 도시</div>
+        <div><i class="c" style="background:#fff;border:2px solid var(--wish)"></i>가고 싶은 곳</div>
+      </div>
+      <div class="popup" id="popup"></div>
+    </div>
+    <aside class="side">
+      <div class="kpis" id="kpis"></div>
+      <div>
+        <div class="sec-h"><h2>다녀온 나라</h2></div>
+        <div class="flag-list" id="countryChips"></div>
+      </div>
+      <div>
+        <div class="sec-h"><h2>최근 여행</h2><a href="#trips" class="note">전체 보기 →</a></div>
+        <div id="recentTrips"></div>
+      </div>
+      <div>
+        <div class="sec-h"><h2>가고 싶은 곳</h2></div>
+        <div id="wishList"></div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- TRIPS -->
+  <section class="view" id="tripsView">
+    <div class="page">
+      <div class="toolbar">
+        <input id="q" placeholder="여행 제목, 도시, 호텔, 태그 검색">
+        <select id="fYear"><option value="">전체 연도</option></select>
+        <select id="fCountry"><option value="">전체 나라</option></select>
+        <select id="fSort">
+          <option value="new">최신순</option><option value="old">오래된순</option>
+          <option value="cost">경비 많은순</option><option value="rating">별점순</option>
+        </select>
+      </div>
+      <div class="grid" id="tripGrid"></div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="view" id="statsView">
+    <div class="page">
+      <div class="stat-grid" id="statKpis"></div>
+      <div class="two">
+        <div class="panel"><h2>연도별 경비</h2><div id="byYear"></div></div>
+        <div class="panel"><h2>항목별 경비</h2><div id="byCat"></div></div>
+      </div>
+      <div class="two">
+        <div class="panel"><h2>나라별 방문</h2><div id="byCountry"></div></div>
+        <div class="panel"><h2>하루 평균 경비 (여행별)</h2><div id="perDay"></div></div>
+      </div>
+      <div class="two">
+        <div class="panel"><h2>호텔 기록</h2><div id="hotelStats"></div></div>
+        <div class="panel"><h2>여행 타임라인</h2><div class="timeline" id="timeline"></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Trip editor -->
+<div class="modal-bg" id="editBg">
+  <div class="modal">
+    <div class="modal-h"><h2 id="editTitle">여행 추가</h2><button class="btn ghost" data-close="editBg">✕</button></div>
+    <div class="modal-b">
+      <fieldset>
+        <legend>기본 정보</legend>
+        <div class="frow">
+          <label class="f" style="grid-column:span 2">여행 제목<input id="e_title" placeholder="예: 첫 오사카 미식 여행"></label>
+          <label class="f">출발일<input type="date" id="e_start"></label>
+          <label class="f">귀국일<input type="date" id="e_end"></label>
+        </div>
+        <div class="frow">
+          <label class="f">동행<input id="e_with" placeholder="혼자, 친구, 가족…"></label>
+          <label class="f">만족도<select id="e_rating"><option value="0">-</option><option value="5">★★★★★</option><option value="4">★★★★</option><option value="3">★★★</option><option value="2">★★</option><option value="1">★</option></select></label>
+          <label class="f" style="grid-column:span 2">태그 (쉼표로 구분)<input id="e_tags" placeholder="미식, 온천, 휴양"></label>
+        </div>
+        <label class="f">메모 / 여행 일기<textarea id="e_memo" placeholder="기억하고 싶은 순간, 맛집, 다음에 다시 가면 할 것…"></textarea></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>방문한 도시</legend>
+        <div class="rowhead city"><span>도시</span><span>나라</span><span>위도</span><span>경도</span><span></span></div>
+        <div class="rows" id="cityRows"></div>
+        <div class="city-add">
+          <input id="cityInput" placeholder="도시 검색 (예: 타이베이, 방콕, 다낭)" autocomplete="off">
+          <button class="btn small" id="cityPickBtn">📍 지도에서 찍기</button>
+          <div class="suggest" id="citySuggest"></div>
+        </div>
+        <div class="note" style="margin-top:6px">목록에 없는 도시는 이름을 입력하고 ‘지도에서 찍기’로 위치를 정하세요.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>통화 · 환율</legend>
+        <div class="frow">
+          <label class="f">현지 통화<select id="e_cur"></select></label>
+          <label class="f">환율 (1 현지통화 = ? 원)<input type="number" step="any" id="e_rate"></label>
+          <div class="note" style="align-self:end">기본값은 대략적인 값이에요. 실제 환전한 환율로 바꿔 두면 원화 합계가 정확해져요.</div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>숙소</legend>
+        <div class="rowhead hotel"><span>호텔 이름</span><span>도시</span><span>체크인</span><span>체크아웃</span><span>총 금액</span><span>통화</span><span>별점</span><span></span></div>
+        <div class="rows" id="hotelRows"></div>
+        <button class="btn small" id="addHotel" style="margin-top:8px">+ 숙소 추가</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>경비</legend>
+        <div class="rowhead exp"><span>날짜</span><span>항목</span><span>내용</span><span>금액</span><span>통화</span><span></span></div>
+        <div class="rows" id="expRows"></div>
+        <button class="btn small" id="addExp" style="margin-top:8px">+ 경비 추가</button>
+        <div class="sum" id="expSum"></div>
+      </fieldset>
+
+      <fieldset id="photoSet">
+        <legend>사진</legend>
+        <div class="photos" id="photoGrid"></div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label class="btn small" style="cursor:pointer">+ 사진 올리기<input type="file" id="photoInput" accept="image/*" multiple hidden></label>
+          <span class="note" id="photoNote">첫 번째 사진(또는 ‘대표’로 고른 사진)이 카드 표지가 돼요.</span>
+        </div>
+      </fieldset>
+    </div>
+    <div class="modal-f">
+      <button class="btn" data-close="editBg">취소</button>
+      <button class="btn primary" id="saveTrip">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Trip detail -->
+<div class="modal-bg" id="detailBg">
+  <div class="modal">
+    <div class="modal-h"><h2>여행 상세</h2><button class="btn ghost" data-close="detailBg">✕</button></div>
+    <div class="modal-b" id="detailBody"></div>
+    <div class="modal-f">
+      <button class="btn danger" id="delTrip">삭제</button>
+      <div class="spacer"></div>
+      <button class="btn" id="showOnMap">지도에서 보기</button>
+      <button class="btn primary" id="editTrip">수정</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wish editor -->
+<div class="modal-bg" id="wishBg">
+  <div class="modal" style="width:min(480px,100%)">
+    <div class="modal-h"><h2>가고 싶은 곳</h2><button class="btn ghost" data-close="wishBg">✕</button></div>
+    <div class="modal-b">
+      <div class="city-add" style="margin-top:0">
+        <input id="wishInput" placeholder="도시 검색 (예: 치앙마이, 삿포로)" autocomplete="off">
+        <button class="btn small" id="wishPickBtn">📍 지도에서 찍기</button>
+        <div class="suggest" id="wishSuggest"></div>
+      </div>
+      <div class="note" id="wishChosen" style="margin:8px 0">선택된 곳 없음</div>
+      <label class="f">메모<textarea id="wishMemo" placeholder="언제쯤, 누구랑, 뭐 하고 싶은지"></textarea></label>
+    </div>
+    <div class="modal-f">
+      <button class="btn" data-close="wishBg">취소</button>
+      <button class="btn primary" id="saveWish">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Backup -->
+<div class="modal-bg" id="backupBg">
+  <div class="modal" style="width:min(560px,100%)">
+    <div class="modal-h"><h2>백업 / 복원</h2><button class="btn ghost" data-close="backupBg">✕</button></div>
+    <div class="modal-b">
+      <p class="note" style="margin-top:0">기록은 <b>이 브라우저</b>에 저장돼요. 브라우저 데이터를 지우거나 다른 기기에서 쓰려면 백업 파일을 받아 두었다가 불러오세요.</p>
+      <label class="note" style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" id="withPhotos" checked> 사진도 포함 (파일이 커질 수 있어요)</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" id="exportBtn">백업 파일 받기</button>
+        <button class="btn" id="copyBtn">JSON 복사</button>
+        <label class="btn" style="cursor:pointer">백업 파일 불러오기<input type="file" id="importInput" accept=".json,application/json" hidden></label>
+      </div>
+      <textarea id="backupText" class="hidden" style="width:100%;margin-top:12px;min-height:160px;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:monospace;font-size:12px" readonly></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- Login (Supabase) -->
+<div class="modal-bg" id="authBg" data-locked>
+  <div class="modal" style="width:min(400px,100%);margin-top:8vh">
+    <div class="modal-h"><h2>🔒 나의 여행 지도</h2></div>
+    <form class="modal-b" id="authForm">
+      <p class="note" style="margin-top:0">이 기기에서 처음 한 번만 비밀번호를 입력하면, 다음부터는 바로 열려요.</p>
+      <input type="text" id="authEmail" autocomplete="username" hidden>
+      <label class="f" style="margin-bottom:10px">비밀번호<input type="password" id="authPw" autocomplete="current-password" required></label>
+      <div class="note" id="authErr" style="color:#b23a2a;min-height:20px"></div>
+      <button class="btn primary" type="submit" id="authBtn" style="width:100%;margin-top:6px">열기</button>
+    </form>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightImg" alt=""></div>
+<div class="toast" id="toast"></div>
+
+<script src="js/data.js"></script>
+<script src="js/config.js"></script>
+<script src="js/store-local.js"></script>
+<script src="js/store-cloud.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

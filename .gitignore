@@ -1,0 +1,13 @@
+# OS / 편집기
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel
+
+# 개인 백업 파일 (여행 기록이 들어 있으니 저장소에 올리지 않기)
+travel-map-backup-*.json
+
+# 기타
+node_modules/
+*.log

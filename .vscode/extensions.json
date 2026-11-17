@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ritwickdey.LiveServer",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "eamodio.gitlens",
+    "MS-CEINTL.vscode-language-pack-ko"
+  ]
+}
