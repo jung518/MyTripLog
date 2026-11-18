@@ -28,6 +28,12 @@ interface CityPin {
 
 type PopupContent = { kind: "city"; city: CityPin } | { kind: "wish"; wish: Wish } | { kind: "country"; id: string };
 
+/** 마우스를 올렸을 때 보여줄 툴팁 내용 */
+type TipContent =
+  | { kind: "country"; name: string; visits: number }
+  | { kind: "city"; name: string; visits: number }
+  | { kind: "wish"; name: string };
+
 interface PopupState {
   x: number;
   y: number;
@@ -44,6 +50,8 @@ interface MapCtx {
   gPins: GSel;
   zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
   k: number;
+  /** 나라별 방문 횟수 (툴팁용) */
+  counts: Record<string, number>;
 }
 
 interface Props {
@@ -76,12 +84,47 @@ export function MapView(props: Props) {
   const propsRef = useRef(props);
   propsRef.current = props;
   const zoomedWithTrips = useRef(false);
+  /** 마지막으로 나라 모양을 계산한 지도 크기 */
+  const drawnSize = useRef({ w: 0, h: 0 });
   const [popup, setPopup] = useState<PopupState | null>(null);
+  const [tip, setTip] = useState<TipContent | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const tipKey = useRef("");
 
   /* ---------- helpers (refs만 읽으므로 D3 이벤트 안에서 써도 안전) ---------- */
   function openPopup(ev: MouseEvent, content: PopupContent) {
     const wrap = wrapRef.current!.getBoundingClientRect();
     setPopup({ x: ev.clientX - wrap.left + 12, y: ev.clientY - wrap.top + 12, placed: false, content });
+  }
+
+  /* ---------- 마우스 툴팁 (마우스일 때만, 터치는 클릭 팝업으로) ---------- */
+  function moveTip(ev: PointerEvent) {
+    const t = tipRef.current;
+    const wrapEl = wrapRef.current;
+    if (!t || !wrapEl) return;
+    const wrap = wrapEl.getBoundingClientRect();
+    let x = ev.clientX - wrap.left + 14;
+    let y = ev.clientY - wrap.top + 16;
+    // 가장자리에서는 마우스 반대쪽으로
+    if (x + t.offsetWidth > wrap.width - 8) x = ev.clientX - wrap.left - t.offsetWidth - 12;
+    if (y + t.offsetHeight > wrap.height - 8) y = ev.clientY - wrap.top - t.offsetHeight - 12;
+    t.style.transform = `translate(${Math.max(4, x)}px, ${Math.max(4, y)}px)`;
+  }
+
+  function showTip(ev: PointerEvent, content: TipContent) {
+    if (ev.pointerType !== "mouse" || propsRef.current.pickText !== null) return;
+    const key = content.kind + "|" + content.name + "|" + ("visits" in content ? content.visits : "");
+    if (tipKey.current !== key) {
+      tipKey.current = key;
+      setTip(content);
+    }
+    moveTip(ev);
+  }
+
+  function hideTip() {
+    if (!tipKey.current) return;
+    tipKey.current = "";
+    setTip(null);
   }
 
   function fit(c: MapCtx) {
@@ -109,7 +152,7 @@ export function MapView(props: Props) {
       .attr("stroke-width", 2.4 / k);
     c.gPins
       .selectAll("text")
-      .style("font-size", 12.5 / k + "px")
+      .style("font-size", 15 / k + "px")
       .attr("x", 9 / k)
       .attr("y", 4 / k)
       .style("stroke-width", 3 / k)
@@ -124,8 +167,7 @@ export function MapView(props: Props) {
       const n = cnt[f.id] || 0;
       return "country" + (n >= 3 ? " v3" : n === 2 ? " v2" : n === 1 ? " v1" : "");
     });
-    paths.selectAll("title").remove();
-    paths.append("title").text((f) => cname(f.id) + (cnt[f.id] ? ` · ${cnt[f.id]}번 방문` : ""));
+    c.counts = cnt;
   }
 
   function drawPins(c: MapCtx, ts: Trip[], ws: Wish[]) {
@@ -147,8 +189,14 @@ export function MapView(props: Props) {
       .attr("transform", (d) => at(d.lng!, d.lat!));
     wg.append("circle")
       .attr("class", "wishpin")
+      .on("pointermove", (ev: PointerEvent, d) => {
+        ev.stopPropagation();
+        showTip(ev, { kind: "wish", name: d.name });
+      })
+      .on("pointerleave", hideTip)
       .on("click", (ev: MouseEvent, d) => {
         ev.stopPropagation();
+        hideTip();
         openPopup(ev, { kind: "wish", wish: d });
       });
     const cg = c.gPins
@@ -159,8 +207,14 @@ export function MapView(props: Props) {
       .attr("transform", (d) => at(d.lng, d.lat));
     cg.append("circle")
       .attr("class", "pin")
+      .on("pointermove", (ev: PointerEvent, d) => {
+        ev.stopPropagation();
+        showTip(ev, { kind: "city", name: d.name, visits: d.trips.length });
+      })
+      .on("pointerleave", hideTip)
       .on("click", (ev: MouseEvent, d) => {
         ev.stopPropagation();
+        hideTip();
         openPopup(ev, { kind: "city", city: d });
       });
     cg.append("text")
@@ -169,9 +223,16 @@ export function MapView(props: Props) {
     scalePins(c);
   }
 
-  function redraw() {
+  /** 지도 크기가 바뀌었을 때만 나라 모양을 다시 계산 (241개 나라 경로 계산이 무거움) */
+  function redraw(force = false) {
     const c = ctxRef.current;
-    if (!c) return;
+    const el = svgRef.current;
+    if (!c || !el) return;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (!w || !h) return; // 다른 탭이라 숨어 있음 → 지도 탭으로 돌아올 때 맞춤
+    if (!force && w === drawnSize.current.w && h === drawnSize.current.h) return;
+    drawnSize.current = { w, h };
     fit(c);
     c.gCountries.selectAll<SVGPathElement, CountryFeature>("path").attr("d", (f) => c.path(f) ?? "");
     drawPins(c, propsRef.current.trips, propsRef.current.wishes);
@@ -250,17 +311,24 @@ export function MapView(props: Props) {
           scalePins(c);
         }
         setPopup(null);
+        hideTip();
       });
-    const c: MapCtx = { svg, projection, path, gCountries, gPins, zoom, k: 1 };
+    const c: MapCtx = { svg, projection, path, gCountries, gPins, zoom, k: 1, counts: {} };
     ctxRef.current = c;
     fit(c);
+    drawnSize.current = { w: el.clientWidth, h: el.clientHeight };
     gCountries
       .selectAll("path")
       .data(features)
       .join("path")
       .attr("class", "country")
       .attr("d", (f) => path(f) ?? "")
+      .on("pointermove", (ev: PointerEvent, f) =>
+        showTip(ev, { kind: "country", name: cname(f.id), visits: ctxRef.current?.counts[f.id] || 0 }),
+      )
+      .on("pointerleave", hideTip)
       .on("click", (ev: MouseEvent, f) => {
+        hideTip();
         if (propsRef.current.pickText !== null) return;
         openPopup(ev, { kind: "country", id: f.id });
       });
@@ -301,17 +369,30 @@ export function MapView(props: Props) {
   }, [trips, wishes]);
 
   /* ---------- 지도 탭으로 돌아오거나 창 크기가 바뀌면 다시 맞추기 ---------- */
+  // 크기가 그대로면 아무것도 안 함 → 탭을 오가도 바로 뜸
   useEffect(() => {
     if (visible) redraw();
+    let timer = 0;
     const onResize = () => {
-      if (propsRef.current.visible) redraw();
+      // 휴대폰 주소창이 접히고 펴질 때마다 resize가 연달아 오므로 멈춘 뒤 한 번만
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (propsRef.current.visible) redraw();
+      }, 150);
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
+    };
   }, [visible]);
 
   useEffect(() => {
-    if (pickText !== null) setPopup(null);
+    if (pickText !== null) {
+      setPopup(null);
+      hideTip();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickText]);
 
   /* ---------- 팝업이 지도 밖으로 나가지 않게 ---------- */
@@ -327,18 +408,9 @@ export function MapView(props: Props) {
   }, [popup]);
 
   return (
-    <div className="map-wrap" ref={wrapRef}>
+    <div className="map-wrap" ref={wrapRef} onPointerLeave={hideTip}>
       <svg id="map" ref={svgRef} className={pickText !== null ? "picking" : undefined} />
       <div className="map-tools">
-        <Button size="sm" onClick={() => zoomTo("mine")}>
-          내 여행
-        </Button>
-        <Button size="sm" onClick={() => zoomTo("asia")}>
-          아시아
-        </Button>
-        <Button size="sm" onClick={() => zoomTo("world")}>
-          세계
-        </Button>
         <Select
           value={year}
           options={[{ value: "", label: "전체 연도" }, ...years.map((y) => ({ value: y, label: y }))]}
@@ -346,7 +418,7 @@ export function MapView(props: Props) {
           ariaLabel="연도"
         />
         <Button size="sm" onClick={props.onAddWish}>
-          ☆ 가고 싶은 곳
+          가고 싶은 곳
         </Button>
       </div>
       <div className={"pick-banner" + (pickText !== null ? " show" : "")}>
@@ -374,6 +446,10 @@ export function MapView(props: Props) {
           <i className="c" style={{ background: "#fff", border: "2px solid var(--wish)" }} />
           가고 싶은 곳
         </div>
+      </div>
+      {/* 마우스를 올렸을 때 툴팁 (위치는 moveTip이 직접 옮김) */}
+      <div className={"map-tip" + (tip ? " show" : "")} ref={tipRef} aria-hidden="true">
+        {tip && <TipBody tip={tip} />}
       </div>
       {popup && (
         <div className="popup" ref={popupRef} style={{ display: "block", left: popup.x, top: popup.y }}>
@@ -434,7 +510,7 @@ function PopupBody({
     const w = content.wish;
     return (
       <>
-        <h3>☆ {w.name}</h3>
+        <h3>{w.name}</h3>
         <div className="note">{cname(w.cid)}</div>
         {w.memo && <p style={{ margin: "6px 0" }}>{w.memo}</p>}
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
@@ -487,6 +563,36 @@ function PopupBody({
         {ts.length}번 방문 · {wonShort(ts.reduce((s, t) => s + tripCost(t).total, 0))}
       </div>
       <TripLinks trips={ts} onOpenTrip={onOpenTrip} />
+    </>
+  );
+}
+
+function visitLevel(n: number) {
+  return n >= 3 ? "v3" : n === 2 ? "v2" : n === 1 ? "v1" : "";
+}
+
+/** 지도 툴팁 내용: 이름 + 방문 정보 (지도 색칠과 같은 색 점) */
+function TipBody({ tip }: { tip: TipContent }) {
+  if (tip.kind === "wish") {
+    return (
+      <>
+        <b className="tip-name">{tip.name}</b>
+        <span className="tip-sub">
+          <i className="tip-dot wish" />
+          가고 싶은 곳
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      <b className="tip-name">{tip.name}</b>
+      {tip.visits > 0 && (
+        <span className="tip-sub">
+          <i className={"tip-dot " + (tip.kind === "city" ? "pin" : visitLevel(tip.visits))} />
+          {tip.visits}번 방문
+        </span>
+      )}
     </>
   );
 }

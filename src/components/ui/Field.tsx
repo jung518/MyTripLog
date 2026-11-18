@@ -157,6 +157,52 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
   );
 });
 
+/** 금액 최대 자릿수 (999조원까지) */
+const MONEY_DIGITS = 15;
+const fmtMoney = (v: number | string | "" | null | undefined) =>
+  v === "" || v == null || !Number.isFinite(+v) ? "" : Math.round(+v).toLocaleString("ko-KR");
+
+/**
+ * 금액 입력칸: 1,234,567처럼 세 자리마다 쉼표를 찍어 보여줌.
+ * 숫자 말고 다른 글자는 무시하고, 쉼표가 생기거나 빠져도 커서가 같은 숫자 뒤에 머물게 함.
+ */
+export function MoneyInput({
+  value,
+  onValue,
+  ...rest
+}: Omit<TextInputProps, "value" | "onChange" | "type"> & {
+  value: number | string | "" | null | undefined;
+  onValue: (v: number | "") => void;
+}) {
+  return (
+    <TextInput
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      value={fmtMoney(value)}
+      onChange={(e) => {
+        const el = e.currentTarget;
+        const caret = el.selectionStart ?? el.value.length;
+        const digitsBefore = el.value.slice(0, caret).replace(/\D/g, "").length;
+        const raw = el.value.replace(/\D/g, "").slice(0, MONEY_DIGITS);
+        const digits = raw.replace(/^0+(?=\d)/, "");
+        const dropped = raw.length - digits.length; // 앞에서 지운 0의 개수
+        onValue(digits === "" ? "" : Number(digits));
+        // 다시 그려진 뒤 커서 위치 맞추기
+        requestAnimationFrame(() => {
+          if (document.activeElement !== el) return;
+          const s = el.value;
+          const want = Math.max(0, digitsBefore - dropped);
+          let pos = 0;
+          for (let n = 0; pos < s.length && n < want; pos++) if (/\d/.test(s[pos])) n++;
+          el.setSelectionRange(pos, pos);
+        });
+      }}
+      {...rest}
+    />
+  );
+}
+
 /** 숫자 입력칸: 빈 칸은 "" 그대로, 숫자는 number로 */
 export function NumberInput({
   value,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   byStartAsc,
   byStartDesc,
@@ -10,6 +10,7 @@ import {
   tripLen,
   tripYear,
   won,
+  wonShort,
 } from "../lib/format";
 import { cname } from "../lib/geo";
 import { LIMITS } from "../lib/limits";
@@ -25,10 +26,8 @@ const SORTS: Record<SortKey, (a: Trip, b: Trip) => number> = {
   cheap: (a, b) => tripCost(a).total - tripCost(b).total,
 };
 
-/** 입국 도장에 찍을 이름: 첫 나라 → 첫 도시 → "여행" */
+/** 입국 도장에 찍을 이름: 첫 도시 → "여행" (카드에는 나라 이름을 쓰지 않음) */
 function stampPlace(t: Trip): string {
-  const cid = tripCountries(t)[0];
-  if (cid) return cname(cid);
   return t.cities?.[0]?.name || "여행";
 }
 
@@ -81,6 +80,17 @@ export function TripsView({ trips, years, country, onCountryChange, onOpenTrip, 
     })
     .sort(SORTS[sort]);
 
+  // 최신순·오래된순일 때는 연도별로 묶어서 보여줌 (여권 사증 페이지를 연도별로 넘기듯)
+  const grouped = sort === "new" || sort === "old";
+  const groups: [string, Trip[]][] = [];
+  if (grouped)
+    for (const t of list) {
+      const yr = tripYear(t) || "날짜 미정";
+      const last = groups[groups.length - 1];
+      if (last && last[0] === yr) last[1].push(t);
+      else groups.push([yr, [t]]);
+    }
+
   function resetFilters() {
     setQ("");
     setYear("");
@@ -115,45 +125,23 @@ export function TripsView({ trips, years, country, onCountryChange, onOpenTrip, 
       </div>
       <div className="grid">
         {list.length ? (
-          list.map((t) => {
-            return (
-              <div
-                className="tcard"
-                key={t.id}
-                onClick={() => onOpenTrip(t.id)}
-              >
-                <div className="cover">
-                  <span className="visa">VISA · 사증</span>
-                  <span className="days">{tripLen(t) || "날짜 미정"}</span>
-                  <span className="ctry">
-                    {tripCountries(t).map(cname).join(" · ")}
+          grouped ? (
+            groups.map(([yr, ts]) => (
+              <Fragment key={yr}>
+                <h2 className="year-h">
+                  <b>{yr}</b>
+                  <span>
+                    {ts.length}번의 여행 · {wonShort(ts.reduce((n, t) => n + tripCost(t).total, 0))}
                   </span>
-                </div>
-                <span className="stamp" aria-hidden="true">
-                  <small>ARRIVED</small>
-                  {stampPlace(t)}
-                  <small>{stampDate(t.start)}</small>
-                </span>
-                <div className="body">
-                  <h3>{t.title || "제목 없음"}</h3>
-                  <div className="meta">
-                    {fmtDate(t.start)}
-                    {t.end ? " – " + fmtDate(t.end) : ""}
-                    {t.with ? " · " + t.with : ""}
-                  </div>
-                  <div className="meta">
-                    {(t.cities || []).map((x) => x.name).join(" → ")}
-                  </div>
-                  <div className="foot">
-                    <b>{won(tripCost(t).total)}</b>
-                  </div>
-                </div>
-                <div className="mrz" aria-hidden="true">
-                  {mrzLine(t)}
-                </div>
-              </div>
-            );
-          })
+                </h2>
+                {ts.map((t) => (
+                  <TripCard key={t.id} t={t} onOpen={onOpenTrip} />
+                ))}
+              </Fragment>
+            ))
+          ) : (
+            list.map((t) => <TripCard key={t.id} t={t} onOpen={onOpenTrip} />)
+          )
         ) : trips.length ? (
           <EmptyState
             kind="search"
@@ -180,6 +168,48 @@ export function TripsView({ trips, years, country, onCountryChange, onOpenTrip, 
             }
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** 여행 카드 하나 (사증 페이지 모양) */
+function TripCard({ t, onOpen }: { t: Trip; onOpen: (id: string) => void }) {
+  return (
+    <div
+      className="tcard"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(t.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(t.id);
+        }
+      }}
+    >
+      <div className="cover">
+        <span className="visa">VISA · 사증</span>
+        <span className="days">{tripLen(t) || "날짜 미정"}</span>
+      </div>
+      <span className="stamp" aria-hidden="true">
+        <small>ARRIVED</small>
+        {stampPlace(t)}
+        <small>{stampDate(t.start)}</small>
+      </span>
+      <div className="body">
+        <h3>{t.title || "제목 없음"}</h3>
+        <div className="meta">
+          {fmtDate(t.start)}
+          {t.end ? " – " + fmtDate(t.end) : ""}
+        </div>
+        <div className="meta">{(t.cities || []).map((x) => x.name).join(" → ")}</div>
+        <div className="foot">
+          <b>{won(tripCost(t).total)}</b>
+        </div>
+      </div>
+      <div className="mrz" aria-hidden="true">
+        {mrzLine(t)}
       </div>
     </div>
   );
