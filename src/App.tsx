@@ -20,13 +20,10 @@ import { loadCountries, type CountryFeature } from "./lib/geo";
 import { linkTo, navigate as go, useLegal, useView, type View } from "./lib/router";
 import { showBanner, toast, useUi } from "./lib/ui";
 import { store, useStore } from "./store";
-import type { Trip, Wish } from "./types";
 
 interface PickState {
   text: string;
   cb: (lat: number, lng: number) => void;
-  /** 위치를 찍는 동안 숨길 모달 */
-  hide: "editor" | "wish";
 }
 
 let started = false;
@@ -133,8 +130,9 @@ export function App() {
     setDetailId(id);
   }
 
-  const startPick = (hide: PickState["hide"]) => (text: string, cb: PickState["cb"]) => {
-    setPick({ text, cb, hide });
+  // 여행 편집 창에서 도시 위치를 지도에서 찍는 동안 편집 창을 숨김
+  const startPick = (text: string, cb: PickState["cb"]) => {
+    setPick({ text, cb });
     go("map");
   };
 
@@ -144,21 +142,7 @@ export function App() {
     p?.cb(lat, lng);
   }
 
-  function showOnMap(t: Trip) {
-    setDetailId(null);
-    setYear("");
-    go("map");
-    const pts = (t.cities || [])
-      .filter((c) => c.lat != null && c.lng != null)
-      .map((c): [number, number] => [c.lng!, c.lat!]);
-    setTimeout(() => {
-      if (pts.length) mapRef.current?.zoomToPoints(pts);
-    }, 60);
-  }
 
-  function wishGo(w: Wish) {
-    if (w.lat != null && w.lng != null) mapRef.current?.zoomToPoints([[w.lng, w.lat]]);
-  }
 
   async function wishDelete(id: string) {
     try {
@@ -261,7 +245,7 @@ export function App() {
             trips={mapTrips}
             wishes={wishes}
             onOpenTrip={openDetail}
-            onWishGo={wishGo}
+            onWishDelete={wishDelete}
           />
         </section>
 
@@ -284,9 +268,9 @@ export function App() {
       <TripEditor
         key={editor.session}
         request={editor.req}
-        show={editor.open && pick?.hide !== "editor"}
+        show={editor.open && !pick}
         onClose={closeEditor}
-        onStartPick={startPick("editor")}
+        onStartPick={startPick}
       />
       <TripDetail
         trip={detailTrip}
@@ -296,13 +280,11 @@ export function App() {
           setDetailId(null);
           openEditor({ trip: t });
         }}
-        onShowOnMap={showOnMap}
       />
       <WishModal
         key={"w" + wish.session}
-        show={wish.open && pick?.hide !== "wish"}
+        show={wish.open}
         onClose={() => setWish((w) => ({ ...w, open: false }))}
-        onStartPick={startPick("wish")}
       />
       <BackupModal show={backupOpen} onClose={() => setBackupOpen(false)} />
       {landing && <Landing onLogin={() => setAuthTab("login")} onSignup={() => setAuthTab("signup")} />}

@@ -13,10 +13,9 @@ interface Props {
   show: boolean;
   onClose: () => void;
   onEdit: (t: Trip) => void;
-  onShowOnMap: (t: Trip) => void;
 }
 
-export function TripDetail({ trip, show, onClose, onEdit, onShowOnMap }: Props) {
+export function TripDetail({ trip, show, onClose, onEdit }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -51,7 +50,6 @@ export function TripDetail({ trip, show, onClose, onEdit, onShowOnMap }: Props) 
               삭제
             </Button>
             <div className="spacer" />
-            <Button onClick={() => trip && onShowOnMap(trip)}>지도에서 보기</Button>
             <Button variant="primary" onClick={() => trip && onEdit(trip)}>
               수정
             </Button>
