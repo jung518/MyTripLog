@@ -6,7 +6,7 @@ import { toast } from "../lib/ui";
 import { store } from "../store";
 import type { Trip } from "../types";
 import { Bars } from "./Bars";
-import { Button, Kpi, KpiGrid, Modal, Panel, TableScroll } from "./ui";
+import { Button, ConfirmModal, Kpi, KpiGrid, Modal, Panel, TableScroll } from "./ui";
 
 interface Props {
   trip: Trip | null;
@@ -17,30 +17,21 @@ interface Props {
 }
 
 export function TripDetail({ trip, show, onClose, onEdit, onShowOnMap }: Props) {
-  const [armed, setArmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    setArmed(false);
+    setConfirming(false);
   }, [trip?.id, show]);
-
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 3000);
-    return () => clearTimeout(t);
-  }, [armed]);
 
   async function del() {
     if (!trip) return;
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
     setDeleting(true);
     try {
       await store.remove("trips", trip.id);
+      setConfirming(false);
       onClose();
-      toast("삭제했어요");
+      toast("삭제");
     } catch {
       /* store가 이미 알림을 띄움 */
     } finally {
@@ -49,25 +40,43 @@ export function TripDetail({ trip, show, onClose, onEdit, onShowOnMap }: Props) 
   }
 
   return (
-    <Modal
-      show={show && !!trip}
-      title="여행 상세"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="danger" armed={armed} loading={deleting} onClick={del}>
-            {armed ? "한 번 더 누르면 삭제" : "삭제"}
-          </Button>
-          <div className="spacer" />
-          <Button onClick={() => trip && onShowOnMap(trip)}>지도에서 보기</Button>
-          <Button variant="primary" onClick={() => trip && onEdit(trip)}>
-            수정
-          </Button>
-        </>
-      }
-    >
-      <div className="modal-b">{trip && <DetailBody t={trip} />}</div>
-    </Modal>
+    <>
+      <Modal
+        show={show && !!trip}
+        title="여행 상세"
+        onClose={onClose}
+        footer={
+          <>
+            <Button variant="danger" onClick={() => setConfirming(true)}>
+              삭제
+            </Button>
+            <div className="spacer" />
+            <Button onClick={() => trip && onShowOnMap(trip)}>지도에서 보기</Button>
+            <Button variant="primary" onClick={() => trip && onEdit(trip)}>
+              수정
+            </Button>
+          </>
+        }
+      >
+        <div className="modal-b">{trip && <DetailBody t={trip} />}</div>
+      </Modal>
+      <ConfirmModal
+        show={show && !!trip && confirming}
+        title="여행 삭제"
+        message={
+          <>
+            <b>‘{trip?.title || "제목 없음"}’</b> 여행을 삭제할까요?
+            <br />
+            <span className="note">삭제한 기록은 되돌릴 수 없어요.</span>
+          </>
+        }
+        confirmLabel="삭제"
+        danger
+        loading={deleting}
+        onConfirm={del}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   );
 }
 
@@ -97,9 +106,7 @@ function DetailBody({ t }: { t: Trip }) {
         <Kpi value={cities.length} label="도시" />
         <Kpi value={hotels.length} label="숙소" />
       </KpiGrid>
-      {cities.length > 0 && (
-        <Panel title="경로">{cities.map((x) => x.name).join(" → ")}</Panel>
-      )}
+      {cities.length > 0 && <Panel title="경로">{cities.map((x) => x.name).join(" → ")}</Panel>}
       {t.memo && (
         <Panel title="메모">
           <p className="memo-text">{t.memo}</p>
@@ -155,7 +162,12 @@ function DetailBody({ t }: { t: Trip }) {
                 {exps.map((e, i) => (
                   <tr key={i}>
                     <td>
-                      <span className="tag" style={{ background: `${CAT_COLORS[e.category] || "#ddd"}22` }}>
+                      <span
+                        className="tag"
+                        style={{
+                          background: `${CAT_COLORS[e.category] || "#ddd"}22`,
+                        }}
+                      >
                         {e.category || "기타"}
                       </span>
                     </td>

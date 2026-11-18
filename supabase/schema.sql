@@ -1,6 +1,17 @@
 -- =========================================================
 -- 나의 여행 지도 - Supabase 설정 SQL
 -- Supabase 대시보드 → SQL Editor → New query 에 전체를 붙여 넣고 Run 하세요. (한 번만)
+--
+-- 여러 사람이 쓰는 설정 (대시보드 → Authentication)
+--   · Sign In / Providers → Email
+--       Allow new users to sign up : 켜기   (누구나 이메일·비밀번호로 가입)
+--       Confirm email              : 켜기   (가입 인증 메일의 링크를 눌러야 가입 완료)
+--   · Emails → SMTP Settings       : 메일 서비스(Resend, Brevo, Gmail 등) 연결 필수
+--       Supabase 기본 메일은 내 팀 주소로만 가서 다른 사람은 인증·비밀번호 재설정 메일을 못 받음
+--   · URL Configuration
+--       Site URL      : https://mytriplog-nu.vercel.app
+--       Redirect URLs : https://mytriplog-nu.vercel.app/**  ,  http://localhost:5173/**
+-- 각자 자기 기록만 보고 고칠 수 있게 하는 건 아래 2) 보안 규칙(RLS)이 맡습니다.
 -- =========================================================
 
 -- 1) 여행 기록 / 가고 싶은 곳 테이블
@@ -49,3 +60,18 @@ drop policy if exists "photos: read own"   on storage.objects;
 drop policy if exists "photos: insert own" on storage.objects;
 drop policy if exists "photos: update own" on storage.objects;
 drop policy if exists "photos: delete own" on storage.objects;
+
+-- 4) 회원 탈퇴: 로그인한 "본인" 계정만 지움 (앱의 계정 메뉴 → 회원 탈퇴)
+--    trips·wishes 는 user_id 가 on delete cascade 라 계정과 함께 지워집니다.
+--    이미 위 1)~3)을 실행했다면 이 4)만 따로 실행해도 됩니다.
+create or replace function public.delete_my_account()
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from auth.users where id = auth.uid();
+$$;
+
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;

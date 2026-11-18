@@ -53,6 +53,12 @@ export class LocalStore extends BaseStore implements TravelStore {
     }
   }
 
+  async refresh() {
+    if (!this.idb) return;
+    const [trips, wishes] = await Promise.all([this.all<Trip>("trips"), this.all<Wish>("wishes")]);
+    this.setState({ trips, wishes });
+  }
+
   private tx(name: StoreName, mode: IDBTransactionMode = "readonly") {
     if (!this.idb) throw new Error("IndexedDB가 열려 있지 않아요");
     return this.idb.transaction(name, mode).objectStore(name);
@@ -95,5 +101,13 @@ export class LocalStore extends BaseStore implements TravelStore {
 
   /* 로컬 모드에는 잠금이 없음 */
   async signIn() {}
+  async signUp() {
+    return "done" as const;
+  }
+  async resendSignup() {}
+  async updateNickname() {}
+  async sendPasswordReset() {}
+  async updatePassword() {}
   async signOut() {}
+  async deleteAccount() {}
 }

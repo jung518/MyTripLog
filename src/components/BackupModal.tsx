@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { downloadBackup } from "../lib/backup";
 import { toast } from "../lib/ui";
 import { store } from "../store";
 import { Button, Modal, Spinner, TextArea } from "./ui";
@@ -21,15 +22,7 @@ export function BackupModal({ show, onClose }: Props) {
   async function exportFile() {
     setBusy(true);
     try {
-      const json = await store.exportJSON();
-      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `travel-map-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      await downloadBackup();
       toast("백업 파일을 저장했어요");
     } catch {
       toast("백업 파일을 만들지 못했어요");

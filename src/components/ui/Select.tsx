@@ -14,17 +14,23 @@ interface Props<T extends string | number> {
   className?: string;
   /** 화면에 보이는 라벨이 없을 때 스크린리더용 이름 */
   ariaLabel?: string;
-  /** 가나다순 정렬 (기본 켜짐). 값이 ""인 항목(전체·선택 안 함)은 맨 위에 고정 */
+  /** 가나다순 정렬 (기본 켜짐). 값이 ""인 항목(전체·선택 안 함)은 맨 위, "기타"는 맨 아래 */
   sorted?: boolean;
 }
 
 const collator = new Intl.Collator("ko", { numeric: true, sensitivity: "base" });
 
-/** 가나다순(숫자는 크기순), 값이 ""인 항목은 맨 위 */
+/** 가나다순(숫자는 크기순). 값이 ""인 항목(전체·선택 안 함)은 맨 위, "기타"는 맨 아래 */
+/** 맨 아래에 둘 항목 이름 */
+const LAST_LABELS = ["기타"];
+
 function sortOptions<T extends string | number>(options: SelectOption<T>[]): SelectOption<T>[] {
   const pinned = options.filter((o) => o.value === "");
-  const rest = options.filter((o) => o.value !== "").sort((a, b) => collator.compare(a.label, b.label));
-  return [...pinned, ...rest];
+  const last = options.filter((o) => o.value !== "" && LAST_LABELS.includes(o.label));
+  const rest = options
+    .filter((o) => o.value !== "" && !LAST_LABELS.includes(o.label))
+    .sort((a, b) => collator.compare(a.label, b.label));
+  return [...pinned, ...rest, ...last];
 }
 
 /**

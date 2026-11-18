@@ -68,7 +68,7 @@ export function WishModal({ show, onClose, onStartPick }: Props) {
           style={{ marginTop: 0 }}
         >
           <Button size="sm" onClick={pick}>
-            📍 지도에서 찍기
+            지도에서 찍기
           </Button>
         </CitySearch>
         <div className="note" style={{ margin: "8px 0" }}>

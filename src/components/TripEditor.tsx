@@ -14,6 +14,7 @@ import {
   FieldRow,
   IconButton,
   Modal,
+  MoneyInput,
   NumberInput,
   Select,
   TextArea,
@@ -73,7 +74,9 @@ function initDraft(req: EditorRequest): TripDraft {
 }
 
 const COUNTRY_IDS = Object.keys(KO);
-const CAT_OPTS = CATS.map((c) => ({ value: c, label: c }));
+/** 경비 항목 선택지. 예전에 고른 항목이 목록에 없으면(예: 숙박) 그 줄에서만 보이게 덧붙임 */
+const catOpts = (current: string) =>
+  [...CATS, ...(current && !CATS.includes(current) ? [current] : [])].map((c) => ({ value: c, label: c }));
 
 const X = (
   <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -177,7 +180,7 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
         }
       }
       onClose();
-      toast("저장했어요 ✈️");
+      toast("저장했어요");
     } catch {
       /* store가 이미 알림을 띄움 */
     } finally {
@@ -260,7 +263,6 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
             <span>나라</span>
             <span>위도</span>
             <span>경도</span>
-            <span />
           </div>
           <div className="rows">
             {draft.cities.length ? (
@@ -301,7 +303,7 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
           </div>
           <CitySearch value={cityQ} onChange={setCityQ} onPick={addCity} placeholder="도시 검색 (예: 타이베이, 방콕, 다낭)">
             <Button size="sm" onClick={pickCity}>
-              📍 지도에서 찍기
+              지도에서 찍기
             </Button>
           </CitySearch>
           <div className="note" style={{ marginTop: 6 }}>
@@ -315,7 +317,6 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
             <span>호텔 이름</span>
             <span>숙박 기간</span>
             <span>총 금액</span>
-            <span />
           </div>
           <div className="rows">
             {draft.hotels.map((h, i) => (
@@ -338,7 +339,7 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
                   highlight={tripRange}
                   ariaLabel="숙박 기간"
                 />
-                <NumberInput
+                <MoneyInput
                   aria-label="숙소 총 금액 (원)"
                   placeholder="금액"
                   suffix="원"
@@ -370,14 +371,13 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
             <span>항목</span>
             <span>상세 내용</span>
             <span>금액</span>
-            <span />
           </div>
           <div className="rows" ref={expRowsRef}>
             {draft.expenses.map((x, i) => (
               <div className="row exp" key={i}>
                 <Select
                   value={x.category}
-                  options={CAT_OPTS}
+                  options={catOpts(x.category)}
                   onChange={(v) => setRow("expenses", i, { category: v })}
                   ariaLabel="항목"
                 />
@@ -390,7 +390,7 @@ export function TripEditor({ request, show, onClose, onStartPick }: Props) {
                   value={x.desc || ""}
                   onChange={(e) => setRow("expenses", i, { desc: e.target.value })}
                 />
-                <NumberInput
+                <MoneyInput
                   aria-label="경비 금액 (원)"
                   placeholder="금액"
                   suffix="원"

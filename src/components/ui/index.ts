@@ -2,9 +2,9 @@
 export { Button, IconButton } from "./Button";
 export { DatePicker, DateRangePicker } from "./DatePicker";
 export { EmptyState } from "./EmptyState";
-export { Field, FieldRow, NumberInput, SearchInput, TextArea, TextInput } from "./Field";
+export { Field, FieldRow, MoneyInput, NumberInput, SearchInput, TextArea, TextInput } from "./Field";
 export { Kpi, KpiGrid } from "./Kpi";
-export { Modal } from "./Modal";
+export { ConfirmModal, Modal } from "./Modal";
 export { Panel, SectionHeader, TableScroll } from "./Panel";
 export { Select, type SelectOption } from "./Select";
 export { LoadingScreen, Spinner } from "./Spinner";

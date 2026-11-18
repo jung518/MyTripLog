@@ -13,8 +13,8 @@ import {
 } from "../lib/format";
 import { cname } from "../lib/geo";
 import type { Trip } from "../types";
-import { Bars, type BarRow } from "./Bars";
-import { EmptyState, Kpi, KpiGrid, Panel, TableScroll } from "./ui";
+import { Bars } from "./Bars";
+import { EmptyState, Kpi, Panel, TableScroll } from "./ui";
 
 interface Props {
   trips: Trip[];
@@ -51,46 +51,49 @@ export function StatsView({ trips: ts, onOpenTrip }: Props) {
     })),
   );
   const abroad = [...countries].filter((c) => c !== "410").length;
-  const kpis: [string | number, string][] = [
-    [abroad, "다녀온 나라"],
-    [cities.size, "다녀온 도시"],
-    [ts.length, "여행 횟수"],
-    [days + "일", "여행한 날"],
-    [wonShort(total), "총 경비"],
-    [ts.length ? wonShort(total / ts.length) : "-", "여행당 평균"],
-  ];
+  const avg = ts.length ? wonShort(total / ts.length) : "-";
+  // 나라 도장: 많이 간 순, 같으면 가나다순
+  const stamps = Object.entries(byC).sort((a, b) => b[1] - a[1] || cname(a[0]).localeCompare(cname(b[0]), "ko"));
   const hs = [...hotels].sort((a, b) => (b.trip.start || "").localeCompare(a.trip.start || ""));
   const tl = [...ts].sort(byStartDesc);
 
+  /* 벤토 그리드: 여권 표지 타일(다녀온 나라 + 도장) → 숫자 타일 → 경비 그래프 → 타임라인·호텔 */
   return (
     <div className="page">
-      <KpiGrid>
-        {kpis.map(([b, s]) => (
-          <Kpi key={s} value={b} label={s} />
-        ))}
-      </KpiGrid>
-      <div className="two">
+      <div className="bento">
+        <section className="b-hero" aria-label="다녀온 나라">
+          <div className="b-hero-k">VISITED · 다녀온 나라</div>
+          <div className="b-hero-n">
+            <b>{abroad}</b>개국
+          </div>
+          {stamps.length ? (
+            <ul className="b-stamps">
+              {stamps.map(([id, n]) => (
+                <li key={id}>
+                  {cname(id)}
+                  {n > 1 && <small>×{n}</small>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="b-hero-empty">첫 여행을 기록하면 여기에 입국 도장이 찍혀요.</p>
+          )}
+        </section>
+        <Kpi value={cities.size} label="다녀온 도시" />
+        <Kpi value={ts.length} label="여행 횟수" />
+        <Kpi value={days + "일"} label="여행한 날" />
+        <Kpi value={wonShort(total)} label={<>총 경비 · 여행당 평균 {avg}</>} />
         <Panel title="연도별 경비">
           <Bars rows={Object.entries(byYear).sort((a, b) => a[0].localeCompare(b[0]))} />
         </Panel>
         <Panel title="항목별 경비">
           <Bars rows={Object.entries(byCat).sort((a, b) => b[1] - a[1])} colorOf={(k) => CAT_COLORS[k] || "#9c968a"} />
         </Panel>
-      </div>
-      <Panel title="나라별 방문">
-        <Bars
-          rows={Object.entries(byC)
-            .sort((a, b) => b[1] - a[1])
-            .map(([k, v]): BarRow => [cname(k), v])}
-          fmt={(v) => v + "번"}
-          colorOf={() => "var(--pin)"}
-        />
-      </Panel>
-      <div className="two">
         <Panel title="호텔 기록">
           {hs.length ? (
             <TableScroll>
-              <table>
+              {/* 칸이 3개뿐이라 휴대폰에서도 옆으로 밀지 않고 화면에 맞춤 */}
+              <table className="fit">
                 <tbody>
                   <tr>
                     <th>호텔</th>
