@@ -84,7 +84,7 @@ export function CitySearch({ value, onChange, onPick, placeholder, style, childr
         ) : (
           <div className="suggest-empty" role="status">
             <b>검색 결과가 없어요</b>
-            <span className="note">목록에 없는 곳은 ‘지도에서 찍기’로 직접 추가할 수 있어요.</span>
+            {children && <span className="note">목록에 없는 곳은 ‘지도에서 찍기’로 직접 추가할 수 있어요.</span>}
           </div>
         )}
       </div>

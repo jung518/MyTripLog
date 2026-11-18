@@ -8,7 +8,7 @@ interface Props {
   trips: Trip[];
   wishes: Wish[];
   onOpenTrip: (id: string) => void;
-  onWishGo: (w: Wish) => void;
+  onWishDelete: (id: string) => void;
 }
 
 export function MiniTrip({ t, onOpen }: { t: Trip; onOpen: (id: string) => void }) {
@@ -22,7 +22,7 @@ export function MiniTrip({ t, onOpen }: { t: Trip; onOpen: (id: string) => void 
   );
 }
 
-export function SidePanel({ trips, wishes, onOpenTrip, onWishGo }: Props) {
+export function SidePanel({ trips, wishes, onOpenTrip, onWishDelete }: Props) {
   const countries = new Set<string>();
   const cities = new Set<string>();
   let days = 0;
@@ -81,8 +81,8 @@ export function SidePanel({ trips, wishes, onOpenTrip, onWishGo }: Props) {
               <span>
                 <b>{w.name}</b> <span className="note">{cname(w.cid)}</span>
               </span>
-              <Button variant="ghost" size="sm" onClick={() => onWishGo(w)}>
-                보기
+              <Button variant="danger" size="sm" onClick={() => onWishDelete(w.id)}>
+                삭제
               </Button>
             </div>
           ))

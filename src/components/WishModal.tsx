@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cname, countryFor } from "../lib/geo";
+import { cname } from "../lib/geo";
 import { toast } from "../lib/ui";
 import { store } from "../store";
 import type { City } from "../types";
@@ -10,20 +10,14 @@ import { Button, Field, Modal, TextArea } from "./ui";
 interface Props {
   show: boolean;
   onClose: () => void;
-  onStartPick: (text: string, cb: (lat: number, lng: number) => void) => void;
 }
 
 /** 열 때마다 key를 바꿔 새로 만들어집니다. */
-export function WishModal({ show, onClose, onStartPick }: Props) {
+export function WishModal({ show, onClose }: Props) {
   const [q, setQ] = useState("");
   const [chosen, setChosen] = useState<City | null>(null);
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
-
-  function pick() {
-    const name = q.trim() || "가고 싶은 곳";
-    onStartPick(`‘${name}’ 위치를 클릭하세요`, (lat, lng) => setChosen({ name, lat, lng, cid: countryFor(lat, lng) }));
-  }
 
   async function save() {
     if (!chosen) {
@@ -66,11 +60,7 @@ export function WishModal({ show, onClose, onStartPick }: Props) {
           onPick={setChosen}
           placeholder="도시 검색 (예: 치앙마이, 삿포로)"
           style={{ marginTop: 0 }}
-        >
-          <Button size="sm" onClick={pick}>
-            지도에서 찍기
-          </Button>
-        </CitySearch>
+        />
         <div className="note" style={{ margin: "8px 0" }}>
           {chosen ? (
             <>
